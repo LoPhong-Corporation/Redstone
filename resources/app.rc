@@ -1,0 +1,24 @@
+// Windows resource script: gives MinecraftServerManager.exe its icon (Explorer,
+// taskbar, Alt-Tab, installer shortcuts) and a version block.
+IDI_ICON1 ICON "redstone.ico"
+
+1 VERSIONINFO
+FILEVERSION 1,1,0,0
+PRODUCTVERSION 1,1,0,0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "FileDescription", "Redstone - Minecraft Server Manager"
+            VALUE "ProductName", "Redstone"
+            VALUE "FileVersion", "1.1.0.0"
+            VALUE "ProductVersion", "1.1.0.0"
+            VALUE "OriginalFilename", "MinecraftServerManager.exe"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

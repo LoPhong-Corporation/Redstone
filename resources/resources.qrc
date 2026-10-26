@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>redstone.png</file>
+        <file>redstone.ico</file>
+    </qresource>
+</RCC>
