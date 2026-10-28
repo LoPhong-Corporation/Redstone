@@ -3,4 +3,8 @@
         <file>redstone.png</file>
         <file>redstone.ico</file>
     </qresource>
+    <qresource prefix="/i18n">
+        <file alias="en.json">i18n/en.json</file>
+        <file alias="vi.json">i18n/vi.json</file>
+    </qresource>
 </RCC>

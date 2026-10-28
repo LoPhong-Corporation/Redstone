@@ -1,6 +1,9 @@
 #include "ui/LibraryDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "config/ServerProperties.hpp"
+#include "net/ModpackInstaller.hpp"
+#include "ui/AddonCompat.hpp"
 #include "ui/FluentTheme.hpp"
 #include "ui/FluentWidgets.hpp"
 
@@ -19,7 +22,14 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QHeaderView>
+#include <QPointer>
 #include <QProgressBar>
+#include <QScrollArea>
+#include <QTabWidget>
+#include <QTableWidget>
+#include <QTextBrowser>
+#include <algorithm>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSet>
@@ -103,36 +113,55 @@ QString TypeLabel(const QString& type)
     return type;
 }
 
-// Version like "1.21.4" from the config, the jar name, or the server's latest.log.
-QString DetectMinecraftVersion(const core::ServerConfig& cfg)
+
+// Modrinth bodies mix markdown with raw HTML and remote images. QTextBrowser cannot
+// fetch images and only understands a little HTML, so drop images/tags and keep the text.
+QString PrepareMarkdown(QString text)
 {
-    if (!cfg.minecraftVersion.empty())
-    {
-        return QString::fromStdWString(cfg.minecraftVersion).trimmed();
-    }
-
-    QFile log(QString::fromStdWString((cfg.directory / L"logs" / L"latest.log").wstring()));
-    if (log.open(QIODevice::ReadOnly))
-    {
-        const QString head = QString::fromUtf8(log.read(96 * 1024));
-        static const QRegularExpression logPattern(QStringLiteral("Starting minecraft server version (\\d+(?:\\.\\d+){1,2})"));
-        const auto m = logPattern.match(head);
-        if (m.hasMatch())
-        {
-            return m.captured(1);
-        }
-    }
-
-    static const QRegularExpression jarPattern(QStringLiteral("(\\d+\\.\\d+(?:\\.\\d+)?)"));
-    const auto m = jarPattern.match(QString::fromStdWString(cfg.serverJar.filename().wstring()));
-    return m.hasMatch() ? m.captured(1) : QString();
+    static const QRegularExpression comments(QStringLiteral("<!--.*?-->"), QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression images(QStringLiteral("!\\[[^\\]]*\\]\\([^)]*\\)"));
+    static const QRegularExpression breaks(QStringLiteral("<br\\s*/?>"), QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression tags(QStringLiteral("</?[A-Za-z][^>]*>"));
+    static const QRegularExpression manyBlank(QStringLiteral("\\n{3,}"));
+    text.remove(comments);
+    text.replace(breaks, QStringLiteral("\n"));
+    text.remove(images);
+    text.remove(tags);
+    text.replace(manyBlank, QStringLiteral("\n\n"));
+    return text.trimmed();
 }
 
-QString DefaultTypeFor(const QString& serverType)
+QList<int> VersionKey(const QString& v)
 {
-    static const QStringList pluginPlatforms = {
-        QStringLiteral("paper"), QStringLiteral("spigot"), QStringLiteral("purpur"), QStringLiteral("folia"), QStringLiteral("bukkit")};
-    return pluginPlatforms.contains(serverType) ? QStringLiteral("plugin") : QStringLiteral("mod");
+    QList<int> key;
+    for (const QString& part : v.split(QLatin1Char('.')))
+    {
+        key.push_back(part.toInt());
+    }
+    return key;
+}
+
+// "1.20 - 1.21.4 (23 phiên bản)" from a long list of game versions (snapshots ignored).
+QString SummarizeGameVersions(const QStringList& versions)
+{
+    static const QRegularExpression release(QStringLiteral("^\\d+\\.\\d+(\\.\\d+)?$"));
+    QStringList rel;
+    for (const QString& v : versions)
+    {
+        if (release.match(v).hasMatch()) rel << v;
+    }
+    if (rel.isEmpty()) return versions.join(QStringLiteral(", "));
+    std::sort(rel.begin(), rel.end(), [](const QString& a, const QString& b) { return VersionKey(a) < VersionKey(b); });
+    if (rel.size() == 1) return rel.first();
+    return QStringLiteral("%1 – %2  (%3)").arg(rel.first(), rel.last(), TR("%1 phiên bản").arg(rel.size()));
+}
+
+QString SideText(const QString& v)
+{
+    if (v == QLatin1String("required")) return TR("bắt buộc");
+    if (v == QLatin1String("optional")) return TR("tuỳ chọn");
+    if (v == QLatin1String("unsupported")) return TR("không hỗ trợ");
+    return v;
 }
 
 } // namespace
@@ -142,7 +171,7 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     , targetServer_(std::move(targetServer))
     , client_(new net::ModrinthClient(this))
 {
-    setWindowTitle(QStringLiteral("Thư viện Mod / Plugin — %1").arg(QString::fromStdWString(targetServer_.name)));
+    setWindowTitle(TR("Thư viện Mod / Plugin — %1").arg(QString::fromStdWString(targetServer_.name)));
     resize(1080, 720);
 
     const QString serverType = Lower(targetServer_.serverType);
@@ -156,11 +185,11 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     headerBox->setSpacing(2);
     AddPageHeader(
         headerBox,
-        QStringLiteral("Thư viện Mod / Plugin"),
-        QStringLiteral("Server: %1  ·  Loại: %2  ·  Minecraft: %3")
+        TR("Thư viện Mod / Plugin"),
+        TR("Server: %1  ·  Loại: %2  ·  Minecraft: %3")
             .arg(QString::fromStdWString(targetServer_.name),
                  QString::fromStdWString(targetServer_.serverType),
-                 detectedVersion.isEmpty() ? QStringLiteral("chưa rõ") : detectedVersion));
+                 detectedVersion.isEmpty() ? TR("chưa rõ") : detectedVersion));
     root->addLayout(headerBox);
 
     // ---- Filter bar --------------------------------------------------
@@ -179,43 +208,43 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     comboType_->addItem(QStringLiteral("Resource pack"), QStringLiteral("resourcepack"));
     comboType_->addItem(QStringLiteral("Shader"), QStringLiteral("shader"));
     comboType_->addItem(QStringLiteral("Modpack"), QStringLiteral("modpack"));
-    comboType_->setCurrentIndex(comboType_->findData(DefaultTypeFor(serverType)));
+    comboType_->setCurrentIndex(comboType_->findData(DefaultProjectTypeFor(targetServer_)));
     row1->addWidget(comboType_);
 
     editQuery_ = new QLineEdit(filterCard);
-    editQuery_->setPlaceholderText(QStringLiteral("Tìm trên Modrinth... (vd: sodium, worldedit, terralith) — để trống để xem phổ biến nhất"));
+    editQuery_->setPlaceholderText(TR("Tìm trên Modrinth... (vd: sodium, worldedit, terralith) — để trống để xem phổ biến nhất"));
     row1->addWidget(editQuery_, 1);
 
     comboSort_ = new QComboBox(filterCard);
-    comboSort_->addItem(QStringLiteral("Liên quan"), QStringLiteral("relevance"));
-    comboSort_->addItem(QStringLiteral("Nhiều lượt tải"), QStringLiteral("downloads"));
-    comboSort_->addItem(QStringLiteral("Nhiều người theo dõi"), QStringLiteral("follows"));
-    comboSort_->addItem(QStringLiteral("Mới nhất"), QStringLiteral("newest"));
-    comboSort_->addItem(QStringLiteral("Cập nhật gần đây"), QStringLiteral("updated"));
+    comboSort_->addItem(TR("Liên quan"), QStringLiteral("relevance"));
+    comboSort_->addItem(TR("Nhiều lượt tải"), QStringLiteral("downloads"));
+    comboSort_->addItem(TR("Nhiều người theo dõi"), QStringLiteral("follows"));
+    comboSort_->addItem(TR("Mới nhất"), QStringLiteral("newest"));
+    comboSort_->addItem(TR("Cập nhật gần đây"), QStringLiteral("updated"));
     row1->addWidget(comboSort_);
 
-    buttonSearch_ = new QPushButton(QStringLiteral("Tìm kiếm"), filterCard);
+    buttonSearch_ = new QPushButton(TR("Tìm kiếm"), filterCard);
     buttonSearch_->setObjectName(QStringLiteral("btnStart"));
     row1->addWidget(buttonSearch_);
     filterLayout->addLayout(row1);
 
     auto* row2 = new QHBoxLayout();
     row2->setSpacing(10);
-    row2->addWidget(new QLabel(QStringLiteral("Phiên bản Minecraft:"), filterCard));
+    row2->addWidget(new QLabel(TR("Phiên bản Minecraft:"), filterCard));
     editGameVersion_ = new QLineEdit(detectedVersion, filterCard);
-    editGameVersion_->setPlaceholderText(QStringLiteral("vd: 1.21.4"));
+    editGameVersion_->setPlaceholderText(TR("vd: 1.21.4"));
     editGameVersion_->setFixedWidth(110);
     row2->addWidget(editGameVersion_);
     row2->addSpacing(12);
     toggleCompatible_ = new ToggleSwitch(filterCard);
     toggleCompatible_->setChecked(true);
     row2->addWidget(toggleCompatible_);
-    row2->addWidget(new QLabel(QStringLiteral("Chỉ bản tương thích với server"), filterCard));
+    row2->addWidget(new QLabel(TR("Chỉ bản tương thích với server"), filterCard));
     row2->addSpacing(12);
     toggleServerOnly_ = new ToggleSwitch(filterCard);
     toggleServerOnly_->setChecked(true);
     row2->addWidget(toggleServerOnly_);
-    row2->addWidget(new QLabel(QStringLiteral("Ẩn mod chỉ chạy ở client"), filterCard));
+    row2->addWidget(new QLabel(TR("Ẩn mod chỉ chạy ở client"), filterCard));
     row2->addStretch(1);
     filterLayout->addLayout(row2);
     root->addWidget(filterCard);
@@ -234,7 +263,7 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     listResults_->setIconSize(QSize(40, 40));
     listResults_->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     leftLayout->addWidget(listResults_, 1);
-    buttonMore_ = new QPushButton(QStringLiteral("Tải thêm kết quả"), leftCard);
+    buttonMore_ = new QPushButton(TR("Tải thêm kết quả"), leftCard);
     buttonMore_->setEnabled(false);
     leftLayout->addWidget(buttonMore_);
     splitter->addWidget(leftCard);
@@ -255,18 +284,54 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     labelDetailMeta_->setWordWrap(true);
     rightLayout->addWidget(labelDetailMeta_);
 
-    labelDetailDescription_ = new QLabel(rightCard);
-    labelDetailDescription_->setWordWrap(true);
-    labelDetailDescription_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    rightLayout->addWidget(labelDetailDescription_);
+    // ---- Detail tabs: overview / full description / versions + changelog / gallery ----
+    tabs_ = new QTabWidget(rightCard);
+    browserOverview_ = new QTextBrowser(tabs_);
+    browserOverview_->setOpenExternalLinks(true);
+    browserOverview_->setFrameShape(QFrame::NoFrame);
+    tabs_->addTab(browserOverview_, TR("Tổng quan"));
 
-    labelDetailTags_ = new QLabel(rightCard);
-    labelDetailTags_->setObjectName(QStringLiteral("hintLabel"));
-    labelDetailTags_->setWordWrap(true);
-    rightLayout->addWidget(labelDetailTags_);
+    browserBody_ = new QTextBrowser(tabs_);
+    browserBody_->setOpenExternalLinks(true);
+    browserBody_->setFrameShape(QFrame::NoFrame);
+    tabs_->addTab(browserBody_, TR("Mô tả"));
+
+    auto* versionsPage = new QWidget(tabs_);
+    auto* versionsLayout = new QVBoxLayout(versionsPage);
+    versionsLayout->setContentsMargins(0, 8, 0, 0);
+    versionsLayout->setSpacing(8);
+    tableVersions_ = new QTableWidget(0, 6, versionsPage);
+    tableVersions_->setHorizontalHeaderLabels(
+        {TR("Phiên bản"), TR("Loại"), TR("Minecraft"), TR("Loader"), TR("Ngày"), TR("Lượt tải")});
+    tableVersions_->horizontalHeader()->setStretchLastSection(true);
+    tableVersions_->verticalHeader()->setVisible(false);
+    tableVersions_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    tableVersions_->setSelectionBehavior(QAbstractItemView::SelectRows);
+    tableVersions_->setSelectionMode(QAbstractItemView::SingleSelection);
+    tableVersions_->setShowGrid(false);
+    versionsLayout->addWidget(tableVersions_, 3);
+    browserChangelog_ = new QTextBrowser(versionsPage);
+    browserChangelog_->setOpenExternalLinks(true);
+    versionsLayout->addWidget(browserChangelog_, 2);
+    buttonUseVersion_ = new QPushButton(TR("Dùng phiên bản đã chọn"), versionsPage);
+    buttonUseVersion_->setEnabled(false);
+    versionsLayout->addWidget(buttonUseVersion_, 0, Qt::AlignRight);
+    tabs_->addTab(versionsPage, TR("Phiên bản"));
+
+    auto* galleryScroll = new QScrollArea(tabs_);
+    galleryScroll->setWidgetResizable(true);
+    galleryScroll->setFrameShape(QFrame::NoFrame);
+    galleryHost_ = new QWidget();
+    galleryLayout_ = new QVBoxLayout(galleryHost_);
+    galleryLayout_->setContentsMargins(0, 8, 8, 8);
+    galleryLayout_->setSpacing(12);
+    galleryScroll->setWidget(galleryHost_);
+    tabs_->addTab(galleryScroll, TR("Ảnh"));
+    rightLayout->addWidget(tabs_, 1);
 
     rightLayout->addSpacing(6);
-    rightLayout->addWidget(MakeSectionLabel(QStringLiteral("SẼ CÀI ĐẶT"), rightCard));
+    labelInstallSection_ = MakeSectionLabel(TR("SẼ CÀI ĐẶT"), rightCard);
+    rightLayout->addWidget(labelInstallSection_);
     labelDetailVersion_ = new QLabel(rightCard);
     labelDetailVersion_->setWordWrap(true);
     rightLayout->addWidget(labelDetailVersion_);
@@ -274,7 +339,6 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     labelDetailDeps_->setObjectName(QStringLiteral("hintLabel"));
     labelDetailDeps_->setWordWrap(true);
     rightLayout->addWidget(labelDetailDeps_);
-    rightLayout->addStretch(1);
 
     progress_ = new QProgressBar(rightCard);
     progress_->setRange(0, 100);
@@ -283,9 +347,9 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     rightLayout->addWidget(progress_);
 
     auto* actionRow = new QHBoxLayout();
-    buttonOpenWeb_ = new QPushButton(QStringLiteral("Mở trên Modrinth"), rightCard);
+    buttonOpenWeb_ = new QPushButton(TR("Mở trên Modrinth"), rightCard);
     buttonOpenWeb_->setEnabled(false);
-    buttonInstall_ = new QPushButton(QStringLiteral("Cài vào server"), rightCard);
+    buttonInstall_ = new QPushButton(TR("Cài vào server"), rightCard);
     buttonInstall_->setObjectName(QStringLiteral("btnStart"));
     buttonInstall_->setEnabled(false);
     actionRow->addWidget(buttonOpenWeb_);
@@ -305,7 +369,7 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     labelStatus_->setObjectName(QStringLiteral("hintLabel"));
     labelStatus_->setWordWrap(true);
     footer->addWidget(labelStatus_, 1);
-    auto* closeButton = new QPushButton(QStringLiteral("Đóng"), this);
+    auto* closeButton = new QPushButton(TR("Đóng"), this);
     closeButton->setObjectName(QStringLiteral("btnNeutral"));
     footer->addWidget(closeButton);
     root->addLayout(footer);
@@ -329,6 +393,27 @@ LibraryDialog::LibraryDialog(core::ServerConfig targetServer, QWidget* parent)
     connect(buttonMore_, &QPushButton::clicked, this, [this]() { StartSearch(true); });
     connect(listResults_, &QListWidget::itemSelectionChanged, this, &LibraryDialog::OnSelectionChanged);
     connect(buttonInstall_, &QPushButton::clicked, this, &LibraryDialog::OnInstallClicked);
+    connect(tableVersions_, &QTableWidget::itemSelectionChanged, this, [this]() {
+        const auto items = tableVersions_->selectedItems();
+        buttonUseVersion_->setEnabled(!items.isEmpty() && !busy_);
+        if (items.isEmpty() || items.first()->row() >= versionList_.size())
+        {
+            browserChangelog_->clear();
+            return;
+        }
+        const QString log = PrepareMarkdown(versionList_[items.first()->row()].changelog);
+        if (log.isEmpty()) browserChangelog_->setPlainText(TR("(Phiên bản này không có changelog)"));
+        else browserChangelog_->setMarkdown(log);
+    });
+    connect(buttonUseVersion_, &QPushButton::clicked, this, [this]() {
+        const auto items = tableVersions_->selectedItems();
+        if (items.isEmpty() || items.first()->row() >= versionList_.size() || busy_) return;
+        selectedVersion_ = versionList_[items.first()->row()];
+        selectedVersionError_.clear();
+        resolving_ = false;
+        UpdateDetailPanel();
+        labelStatus_->setText(TR("Sẽ cài phiên bản %1 do bạn chọn.").arg(selectedVersion_->versionNumber));
+    });
     connect(buttonOpenWeb_, &QPushButton::clicked, this, [this]() {
         if (const auto sel = CurrentSelection())
         {
@@ -349,29 +434,7 @@ QString LibraryDialog::CurrentType() const
 
 QStringList LibraryDialog::LoadersForType(const QString& projectType) const
 {
-    const QString st = Lower(targetServer_.serverType);
-    if (projectType == QLatin1String("datapack"))
-    {
-        return {QStringLiteral("datapack")};
-    }
-    if (projectType == QLatin1String("plugin"))
-    {
-        if (st == QLatin1String("paper")) return {QStringLiteral("paper"), QStringLiteral("spigot"), QStringLiteral("bukkit")};
-        if (st == QLatin1String("purpur")) return {QStringLiteral("purpur"), QStringLiteral("paper"), QStringLiteral("spigot"), QStringLiteral("bukkit")};
-        if (st == QLatin1String("folia")) return {QStringLiteral("folia")};
-        if (st == QLatin1String("spigot")) return {QStringLiteral("spigot"), QStringLiteral("bukkit")};
-        if (st == QLatin1String("bukkit")) return {QStringLiteral("bukkit")};
-        return {};
-    }
-    if (projectType == QLatin1String("mod") || projectType == QLatin1String("modpack"))
-    {
-        if (st == QLatin1String("fabric")) return {QStringLiteral("fabric")};
-        if (st == QLatin1String("quilt")) return {QStringLiteral("quilt"), QStringLiteral("fabric")};
-        if (st == QLatin1String("forge")) return {QStringLiteral("forge")};
-        if (st == QLatin1String("neoforge")) return {QStringLiteral("neoforge")};
-        return {};
-    }
-    return {}; // resource packs / shaders are not loader specific
+    return LoadersForServer(targetServer_, projectType);
 }
 
 QString LibraryDialog::GameVersionFilter() const
@@ -435,7 +498,7 @@ void LibraryDialog::StartSearch(bool append)
 
     buttonSearch_->setEnabled(false);
     buttonMore_->setEnabled(false);
-    labelStatus_->setText(QStringLiteral("Đang tìm kiếm..."));
+    labelStatus_->setText(TR("Đang tìm kiếm..."));
 
     client_->Search(options, [this, token, append](net::SearchResult result, QString error) {
         if (token != searchToken_)
@@ -445,24 +508,24 @@ void LibraryDialog::StartSearch(bool append)
         buttonSearch_->setEnabled(true);
         if (!error.isEmpty())
         {
-            labelStatus_->setText(QStringLiteral("Lỗi: %1").arg(error));
+            labelStatus_->setText(TR("Lỗi: %1").arg(error));
             return;
         }
         totalHits_ = result.totalHits;
         PopulateResults(result.hits, append);
         if (hits_.isEmpty())
         {
-            QString hint = QStringLiteral("Không tìm thấy kết quả nào.");
+            QString hint = TR("Không tìm thấy kết quả nào.");
             if (toggleCompatible_->isChecked() && LoadersForType(CurrentType()).isEmpty() && CurrentType() == QLatin1String("plugin"))
             {
-                hint += QStringLiteral(" Loại server \"%1\" thường không chạy plugin Bukkit/Paper.")
+                hint += TR(" Loại server \"%1\" thường không chạy plugin Bukkit/Paper.")
                             .arg(QString::fromStdWString(targetServer_.serverType));
             }
             labelStatus_->setText(hint);
         }
         else
         {
-            labelStatus_->setText(QStringLiteral("Hiển thị %1 / %2 kết quả.").arg(hits_.size()).arg(totalHits_));
+            labelStatus_->setText(TR("Hiển thị %1 / %2 kết quả.").arg(hits_.size()).arg(totalHits_));
         }
         buttonMore_->setEnabled(hits_.size() < totalHits_);
     });
@@ -475,11 +538,11 @@ void LibraryDialog::PopulateResults(const QList<net::ModrinthProjectHit>& hits, 
     for (const auto& hit : hits)
     {
         hits_.push_back(hit);
-        QString second = QStringLiteral("%1  ·  %2 lượt tải  ·  %3 theo dõi").arg(hit.author, HumanCount(hit.downloads), HumanCount(hit.follows));
+        QString second = TR("%1  ·  %2 lượt tải  ·  %3 theo dõi").arg(hit.author, HumanCount(hit.downloads), HumanCount(hit.follows));
         const QString updated = HumanDate(hit.dateModified);
         if (!updated.isEmpty())
         {
-            second += QStringLiteral("  ·  cập nhật %1").arg(updated);
+            second += TR("  ·  cập nhật %1").arg(updated);
         }
         auto* item = new QListWidgetItem(FluentTheme::Icon(glyph::Puzzle, 28), hit.title + QStringLiteral("\n") + second, listResults_);
         item->setData(Qt::UserRole, hit.projectId);
@@ -525,11 +588,201 @@ void LibraryDialog::OnSelectionChanged()
 {
     selectedVersion_.reset();
     selectedVersionError_.clear();
+    ClearDetails();
     UpdateDetailPanel();
     if (CurrentSelection().has_value())
     {
+        RebuildOverview(); // search-hit data first, richer details arrive asynchronously
         ResolveSelectedVersion();
+        LoadProjectDetails();
     }
+}
+
+void LibraryDialog::ClearDetails()
+{
+    ++detailToken_;
+    projectDetail_.reset();
+    members_.clear();
+    versionList_.clear();
+    browserOverview_->clear();
+    browserBody_->clear();
+    browserChangelog_->clear();
+    tableVersions_->setRowCount(0);
+    buttonUseVersion_->setEnabled(false);
+    RebuildGallery();
+}
+
+void LibraryDialog::LoadProjectDetails()
+{
+    const auto sel = CurrentSelection();
+    if (!sel.has_value()) return;
+    const int token = ++detailToken_;
+    const QString id = sel->projectId;
+
+    client_->GetProject(id, [this, token](std::optional<net::ModrinthProjectDetail> project, QString error) {
+        if (token != detailToken_) return;
+        if (!project.has_value())
+        {
+            browserBody_->setPlainText(TR("Không tải được chi tiết: %1").arg(error));
+            return;
+        }
+        projectDetail_ = project;
+        const QString body = PrepareMarkdown(project->body);
+        if (body.isEmpty()) browserBody_->setPlainText(project->description);
+        else browserBody_->setMarkdown(body);
+        RebuildOverview();
+        RebuildGallery();
+    });
+    client_->GetMembers(id, [this, token](QList<net::ModrinthMember> members) {
+        if (token != detailToken_) return;
+        members_ = members;
+        RebuildOverview();
+    });
+    client_->ListVersions(id, GameVersionFilter(), LoaderFilter(), [this, token](QList<net::ModrinthVersion> versions, QString) {
+        if (token != detailToken_) return;
+        versionList_ = versions;
+        RebuildVersionsTable();
+    });
+}
+
+void LibraryDialog::RebuildOverview()
+{
+    const auto sel = CurrentSelection();
+    if (!sel.has_value())
+    {
+        browserOverview_->clear();
+        return;
+    }
+    const net::ModrinthProjectDetail* p = projectDetail_.has_value() ? &*projectDetail_ : nullptr;
+    const QString muted = FluentTheme::Colors().textSecondary.name();
+
+    QString h = QStringLiteral("<p>%1</p><table cellspacing='0'>").arg((p != nullptr ? p->description : sel->description).toHtmlEscaped());
+    auto row = [&](const QString& key, const QString& valueHtml) {
+        if (valueHtml.trimmed().isEmpty()) return;
+        h += QStringLiteral("<tr><td style='padding:3px 16px 3px 0; color:%1; white-space:nowrap' valign='top'>%2</td><td>%3</td></tr>")
+                 .arg(muted, key.toHtmlEscaped(), valueHtml);
+    };
+
+    QStringList people;
+    for (const auto& m : members_)
+    {
+        people << (m.role.isEmpty() ? m.name : QStringLiteral("%1 (%2)").arg(m.name, m.role)).toHtmlEscaped();
+    }
+    row(TR("Tác giả"), people.isEmpty() ? sel->author.toHtmlEscaped() : people.join(QStringLiteral(", ")));
+    row(TR("Thống kê"), TR("%1 lượt tải  ·  %2 người theo dõi").arg(HumanCount(sel->downloads), HumanCount(p != nullptr ? p->followers : sel->follows)));
+
+    const QString client = p != nullptr ? p->clientSide : sel->clientSide;
+    const QString serverSide = p != nullptr ? p->serverSide : sel->serverSide;
+    if (!client.isEmpty() || !serverSide.isEmpty())
+    {
+        row(TR("Môi trường"), TR("Server: %1  ·  Client: %2").arg(SideText(serverSide), SideText(client)));
+    }
+    const QStringList loaders = p != nullptr ? p->loaders : QStringList();
+    row(TR("Loader / nền tảng"), loaders.join(QStringLiteral(", ")).toHtmlEscaped());
+
+    const QStringList versions = p != nullptr ? p->gameVersions : sel->gameVersions;
+    QString mc = SummarizeGameVersions(versions).toHtmlEscaped();
+    const QString want = editGameVersion_->text().trimmed();
+    if (!want.isEmpty() && !versions.isEmpty())
+    {
+        mc += versions.contains(want)
+            ? QStringLiteral("<br><b style='color:%1'>✓ %2</b>").arg(FluentTheme::Colors().success.name(), TR("Hỗ trợ Minecraft %1 của server bạn").arg(want).toHtmlEscaped())
+            : QStringLiteral("<br><b style='color:%1'>✗ %2</b>").arg(FluentTheme::Colors().warning.name(), TR("Chưa thấy hỗ trợ Minecraft %1").arg(want).toHtmlEscaped());
+    }
+    row(TR("Phiên bản Minecraft"), mc);
+
+    if (p != nullptr)
+    {
+        row(TR("Giấy phép"), p->licenseName.toHtmlEscaped());
+        row(TR("Đăng lần đầu"), HumanDate(p->published));
+        row(TR("Cập nhật gần nhất"), HumanDate(p->updated));
+        QStringList links;
+        auto addLink = [&links](const QString& label, const QString& url) {
+            if (url.startsWith(QStringLiteral("http"))) links << QStringLiteral("<a href='%1'>%2</a>").arg(url.toHtmlEscaped(), label.toHtmlEscaped());
+        };
+        addLink(TR("Mã nguồn"), p->sourceUrl);
+        addLink(TR("Báo lỗi"), p->issuesUrl);
+        addLink(TR("Wiki"), p->wikiUrl);
+        addLink(TR("Discord"), p->discordUrl);
+        for (int i = 0; i < p->donationUrls.size(); ++i)
+        {
+            addLink(TR("Ủng hộ (%1)").arg(p->donationNames.value(i)), p->donationUrls[i]);
+        }
+        links << QStringLiteral("<a href='https://modrinth.com/%1/%2'>Modrinth</a>").arg(sel->projectType, sel->slug.toHtmlEscaped());
+        row(TR("Liên kết"), links.join(QStringLiteral("  ·  ")));
+    }
+    const QStringList tags = p != nullptr ? p->categories : sel->categories;
+    row(TR("Thẻ"), tags.join(QStringLiteral("  ·  ")).toHtmlEscaped());
+    h += QStringLiteral("</table>");
+    browserOverview_->setHtml(h);
+}
+
+void LibraryDialog::RebuildVersionsTable()
+{
+    tableVersions_->setRowCount(0);
+    const int shown = std::min<int>(versionList_.size(), 60);
+    tableVersions_->setRowCount(shown);
+    for (int r = 0; r < shown; ++r)
+    {
+        const net::ModrinthVersion& v = versionList_[r];
+        QStringList mc = v.gameVersions;
+        QString mcText = mc.size() > 3 ? mc.mid(0, 3).join(QStringLiteral(", ")) + QStringLiteral(" …") : mc.join(QStringLiteral(", "));
+        const QStringList cells = {v.versionNumber, v.versionType, mcText, v.loaders.join(QStringLiteral(", ")), HumanDate(v.datePublished), HumanCount(v.downloads)};
+        for (int c = 0; c < cells.size(); ++c)
+        {
+            tableVersions_->setItem(r, c, new QTableWidgetItem(cells[c]));
+        }
+    }
+    tableVersions_->resizeColumnsToContents();
+    if (shown > 0) tableVersions_->selectRow(0); // newest first; shows its changelog
+}
+
+void LibraryDialog::RebuildGallery()
+{
+    while (QLayoutItem* item = galleryLayout_->takeAt(0))
+    {
+        if (QWidget* w = item->widget()) w->deleteLater();
+        delete item;
+    }
+    if (!projectDetail_.has_value() || projectDetail_->gallery.isEmpty())
+    {
+        auto* none = new QLabel(projectDetail_.has_value() ? TR("Dự án này không có ảnh.") : QString(), galleryHost_);
+        none->setObjectName(QStringLiteral("hintLabel"));
+        galleryLayout_->addWidget(none);
+        galleryLayout_->addStretch(1);
+        return;
+    }
+    const int token = detailToken_;
+    const int maxWidth = std::max(260, tabs_->width() - 60);
+    int count = 0;
+    for (const auto& image : projectDetail_->gallery)
+    {
+        if (++count > 8) break;
+        auto* picture = new QLabel(TR("Đang tải ảnh..."), galleryHost_);
+        picture->setAlignment(Qt::AlignCenter);
+        picture->setMinimumHeight(60);
+        galleryLayout_->addWidget(picture);
+        const QString caption = image.description.isEmpty() ? image.title : (image.title.isEmpty() ? image.description : image.title + QStringLiteral(" — ") + image.description);
+        if (!caption.isEmpty())
+        {
+            auto* cap = new QLabel(caption, galleryHost_);
+            cap->setObjectName(QStringLiteral("hintLabel"));
+            cap->setWordWrap(true);
+            galleryLayout_->addWidget(cap);
+        }
+        QPointer<QLabel> target(picture);
+        client_->FetchImage(image.url, 8 * 1024 * 1024, [this, token, target, maxWidth](QByteArray data) {
+            if (token != detailToken_ || target.isNull()) return;
+            QPixmap pm;
+            if (data.isEmpty() || !pm.loadFromData(data))
+            {
+                target->setText(TR("(không tải được ảnh)"));
+                return;
+            }
+            target->setPixmap(pm.width() > maxWidth ? pm.scaledToWidth(maxWidth, Qt::SmoothTransformation) : pm);
+        });
+    }
+    galleryLayout_->addStretch(1);
 }
 
 void LibraryDialog::ResolveSelectedVersion()
@@ -562,27 +815,25 @@ void LibraryDialog::UpdateDetailPanel()
     const auto sel = CurrentSelection();
     if (!sel.has_value())
     {
-        labelDetailTitle_->setText(QStringLiteral("Chọn một mục để xem chi tiết"));
+        labelDetailTitle_->setText(TR("Chọn một mục để xem chi tiết"));
         labelDetailMeta_->clear();
-        labelDetailDescription_->clear();
-        labelDetailTags_->clear();
         labelDetailVersion_->clear();
         labelDetailDeps_->clear();
         buttonInstall_->setEnabled(false);
         buttonOpenWeb_->setEnabled(false);
+        labelInstallSection_->setVisible(false);
         return;
     }
 
+    labelInstallSection_->setVisible(true);
     labelDetailTitle_->setText(sel->title);
-    labelDetailMeta_->setText(QStringLiteral("%1  ·  bởi %2").arg(TypeLabel(sel->projectType), sel->author));
-    labelDetailDescription_->setText(sel->description);
-    labelDetailTags_->setText(sel->categories.isEmpty() ? QString() : sel->categories.join(QStringLiteral("  ·  ")));
+    labelDetailMeta_->setText(TR("%1  ·  bởi %2").arg(TypeLabel(sel->projectType), sel->author));
     buttonOpenWeb_->setEnabled(!sel->slug.isEmpty());
 
     labelDetailDeps_->clear();
     if (resolving_)
     {
-        labelDetailVersion_->setText(QStringLiteral("Đang tìm phiên bản phù hợp..."));
+        labelDetailVersion_->setText(TR("Đang tìm phiên bản phù hợp..."));
         buttonInstall_->setEnabled(false);
         return;
     }
@@ -602,16 +853,16 @@ void LibraryDialog::UpdateDetailPanel()
         const QString dest = DestinationFor(sel->projectType, file->filename);
         if (QFileInfo::exists(dest))
         {
-            text += QStringLiteral("<br><i>File này đã có trong server — sẽ được ghi đè.</i>");
+            text += TR("<br><i>File này đã có trong server — sẽ được ghi đè.</i>");
         }
     }
     if (v.versionType != QLatin1String("release"))
     {
-        text += QStringLiteral("<br><i>Đây là bản %1, có thể chưa ổn định.</i>").arg(v.versionType);
+        text += TR("<br><i>Đây là bản %1, có thể chưa ổn định.</i>").arg(v.versionType);
     }
     if (!toggleCompatible_->isChecked())
     {
-        text += QStringLiteral("<br><i>Đang tắt lọc tương thích — bản này có thể không chạy trên server của bạn.</i>");
+        text += TR("<br><i>Đang tắt lọc tương thích — bản này có thể không chạy trên server của bạn.</i>");
     }
     labelDetailVersion_->setText(text);
 
@@ -625,13 +876,35 @@ void LibraryDialog::UpdateDetailPanel()
     }
     if (required > 0)
     {
-        labelDetailDeps_->setText(QStringLiteral("Cần %1 phụ thuộc bắt buộc — sẽ được kiểm tra và cài kèm khi bạn bấm Cài.").arg(required));
+        QString depsText = depTitleCache_.value(v.id);
+        if (depsText.isEmpty())
+        {
+            depsText = TR("Cần %1 phụ thuộc bắt buộc — sẽ được kiểm tra và cài kèm khi bạn bấm Cài.").arg(required);
+            QStringList ids;
+            for (const auto& dep : v.dependencies)
+            {
+                if (dep.type == QLatin1String("required") && !dep.projectId.isEmpty()) ids << dep.projectId;
+            }
+            if (!ids.isEmpty())
+            {
+                const QString versionId = v.id;
+                client_->GetProjectTitles(ids, [this, versionId, required](QHash<QString, QString> titles) {
+                    QStringList names = titles.values();
+                    names.sort();
+                    if (names.isEmpty()) return;
+                    depTitleCache_.insert(versionId, TR("Phụ thuộc bắt buộc (%1): %2 — sẽ được kiểm tra và cài kèm khi bạn bấm Cài.").arg(required).arg(names.join(QStringLiteral(", "))));
+                    if (selectedVersion_.has_value() && selectedVersion_->id == versionId)
+                        labelDetailDeps_->setText(depTitleCache_.value(versionId));
+                });
+            }
+        }
+        labelDetailDeps_->setText(depsText);
     }
     if (sel->projectType == QLatin1String("modpack"))
     {
-        labelDetailDeps_->setText(labelDetailDeps_->text() + QStringLiteral("\nModpack chỉ được tải về thư mục modpacks/ — chưa tự giải nén/cài từng mod."));
+        labelDetailDeps_->setText(TR("Modpack: sau khi tải sẽ hỏi cài thẳng vào server (mod + cấu hình). Server phải đã chạy đúng loader."));
     }
-    buttonInstall_->setText(sel->projectType == QLatin1String("modpack") ? QStringLiteral("Tải modpack") : QStringLiteral("Cài vào server"));
+    buttonInstall_->setText(sel->projectType == QLatin1String("modpack") ? TR("Tải modpack") : TR("Cài vào server"));
     buttonInstall_->setEnabled(!busy_ && file.has_value());
 }
 
@@ -663,12 +936,12 @@ void LibraryDialog::OnInstallClicked()
     const QString mainName = net::ModrinthClient::SafeFileName(mainFile ? mainFile->filename : QString());
     if (!mainFile.has_value() || mainName.isEmpty())
     {
-        labelStatus_->setText(QStringLiteral("Tên file từ Modrinth không hợp lệ — đã huỷ cài đặt."));
+        labelStatus_->setText(TR("Tên file từ Modrinth không hợp lệ — đã huỷ cài đặt."));
         return;
     }
 
     SetBusy(true);
-    labelStatus_->setText(QStringLiteral("Đang kiểm tra phụ thuộc..."));
+    labelStatus_->setText(TR("Đang kiểm tra phụ thuộc..."));
 
     auto state = std::make_shared<PlanState>();
     PlanItem mainItem;
@@ -732,7 +1005,7 @@ void LibraryDialog::ResolveDependencies(const std::shared_ptr<PlanState>& state,
                         if (QFileInfo::exists(item.destination))
                         {
                             // Already present: keep the existing file, just don't re-download it.
-                            state->warnings << QStringLiteral("%1 đã có sẵn — giữ nguyên.").arg(safe);
+                            state->warnings << TR("%1 đã có sẵn — giữ nguyên.").arg(safe);
                         }
                         else
                         {
@@ -743,7 +1016,7 @@ void LibraryDialog::ResolveDependencies(const std::shared_ptr<PlanState>& state,
                 }
                 else if (!ver.has_value())
                 {
-                    state->warnings << QStringLiteral("Không tìm được bản tương thích cho phụ thuộc %1: %2").arg(key, error);
+                    state->warnings << TR("Không tìm được bản tương thích cho phụ thuộc %1: %2").arg(key, error);
                 }
                 if (--state->pending == 0)
                 {
@@ -769,26 +1042,26 @@ void LibraryDialog::ResolveDependencies(const std::shared_ptr<PlanState>& state,
 
 void LibraryDialog::ConfirmAndRun(const std::shared_ptr<PlanState>& state)
 {
-    QString text = QStringLiteral("Sẽ tải %1 file vào server \"%2\":\n\n").arg(state->items.size()).arg(QString::fromStdWString(targetServer_.name));
+    QString text = TR("Sẽ tải %1 file vào server \"%2\":\n\n").arg(state->items.size()).arg(QString::fromStdWString(targetServer_.name));
     qint64 totalBytes = 0;
     for (const auto& item : state->items)
     {
         text += QStringLiteral("  •  %1%2  —  %3 (%4)\n")
-                    .arg(item.dependency ? QStringLiteral("[phụ thuộc] ") : QString(), item.file.filename, item.version.versionNumber, HumanSize(item.file.size));
+                    .arg(item.dependency ? TR("[phụ thuộc] ") : QString(), item.file.filename, item.version.versionNumber, HumanSize(item.file.size));
         totalBytes += item.file.size;
     }
-    text += QStringLiteral("\nTổng dung lượng: %1").arg(HumanSize(totalBytes));
+    text += TR("\nTổng dung lượng: %1").arg(HumanSize(totalBytes));
     if (!state->warnings.isEmpty())
     {
-        text += QStringLiteral("\n\nLưu ý:\n  –  ") + state->warnings.join(QStringLiteral("\n  –  "));
+        text += TR("\n\nLưu ý:\n  –  ") + state->warnings.join(QStringLiteral("\n  –  "));
     }
-    text += QStringLiteral("\n\nTiếp tục?");
+    text += TR("\n\nTiếp tục?");
 
-    if (QMessageBox::question(this, QStringLiteral("Xác nhận cài đặt"), text, QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+    if (QMessageBox::question(this, TR("Xác nhận cài đặt"), text, QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
     {
         SetBusy(false);
         UpdateDetailPanel();
-        labelStatus_->setText(QStringLiteral("Đã huỷ."));
+        labelStatus_->setText(TR("Đã huỷ."));
         return;
     }
 
@@ -804,21 +1077,105 @@ void LibraryDialog::ConfirmAndRun(const std::shared_ptr<PlanState>& state)
     DownloadNext();
 }
 
+void LibraryDialog::OfferModpackInstall(const QString& mrpackPath)
+{
+    auto* installer = new net::ModpackInstaller(client_, this);
+    QString error;
+    const QString serverDir = QString::fromStdWString(targetServer_.directory.wstring());
+    if (!installer->Prepare(mrpackPath, serverDir, &error))
+    {
+        installer->deleteLater();
+        SetBusy(false);
+        UpdateDetailPanel();
+        labelStatus_->setText(TR("Đã tải modpack nhưng không cài được: %1").arg(error));
+        return;
+    }
+
+    const net::ModpackInfo& info = installer->Info();
+    QString text = QStringLiteral("Modpack \"%1\" %2\n\n").arg(info.name, info.versionId);
+    if (!info.summary.isEmpty())
+    {
+        text += info.summary + QStringLiteral("\n\n");
+    }
+    text += TR("Yêu cầu: Minecraft %1").arg(info.minecraft.isEmpty() ? TR("(không rõ)") : info.minecraft);
+    if (!info.loader.isEmpty())
+    {
+        text += QStringLiteral(" + %1 %2").arg(info.loader, info.loaderVersion);
+    }
+    text += TR("\nSẽ tải %1 file (%2) cho server, bỏ qua %3 file chỉ dành cho client, rồi chép cấu hình (overrides) vào server.")
+                .arg(info.serverFileCount).arg(HumanSize(info.totalBytes)).arg(info.clientOnlySkipped);
+
+    QStringList warnings;
+    const QString haveVersion = editGameVersion_->text().trimmed();
+    if (!info.minecraft.isEmpty() && !haveVersion.isEmpty() && haveVersion != info.minecraft)
+    {
+        warnings << TR("Server hiện là Minecraft %1, modpack cần %2.").arg(haveVersion, info.minecraft);
+    }
+    const QStringList serverLoaders = LoadersForType(QStringLiteral("mod"));
+    if (!info.loader.isEmpty() && !serverLoaders.contains(info.loader))
+    {
+        warnings << TR("Loại server \"%1\" không khớp loader %2 của modpack.")
+                        .arg(QString::fromStdWString(targetServer_.serverType), info.loader);
+    }
+    warnings << TR("App KHÔNG tự cài file server/loader - server phải đã chạy đúng phiên bản và loader trên.");
+    warnings << TR("File trùng tên trong mods/, config/... sẽ bị ghi đè. Nên tạo backup trước.");
+    text += TR("\n\nLưu ý:\n  –  ") + warnings.join(QStringLiteral("\n  –  ")) + TR("\n\nCài modpack vào server ngay bây giờ?");
+
+    if (QMessageBox::question(this, TR("Cài modpack"), text, QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+    {
+        installer->deleteLater();
+        SetBusy(false);
+        UpdateDetailPanel();
+        labelStatus_->setText(TR("Đã tải modpack vào thư mục modpacks/ (chưa cài vào server)."));
+        return;
+    }
+
+    progress_->setRange(0, 1000);
+    progress_->setValue(0);
+    installer->Install(
+        [this](int done, int total, const QString& current) {
+            progress_->setValue(total > 0 ? done * 1000 / total : 1000);
+            labelStatus_->setText(TR("Đang tải mod (%1/%2): %3").arg(done).arg(total).arg(current));
+        },
+        [this, installer](net::ModpackInstaller::Result result) {
+            installer->deleteLater();
+            SetBusy(false);
+            UpdateDetailPanel();
+            if (result.ok)
+            {
+                QString message = TR("Đã cài modpack: %1 file mod và %2 file cấu hình. Khởi động lại server để áp dụng.")
+                                      .arg(result.filesDownloaded).arg(result.overridesApplied);
+                if (!result.warnings.isEmpty())
+                {
+                    message += TR(" (%1 cảnh báo)").arg(result.warnings.size());
+                }
+                labelStatus_->setText(message);
+            }
+            else
+            {
+                labelStatus_->setText(TR("Cài modpack thất bại: %1").arg(result.errors.join(QStringLiteral("; "))));
+            }
+        });
+}
+
 void LibraryDialog::DownloadNext()
 {
     if (queueIndex_ >= queue_.size())
     {
+        const bool modpack = !queue_.isEmpty() && queue_.last().destination.endsWith(QStringLiteral(".mrpack"), Qt::CaseInsensitive);
+        if (modpack)
+        {
+            OfferModpackInstall(queue_.last().destination); // keeps the dialog busy until it finishes
+            return;
+        }
         SetBusy(false);
         UpdateDetailPanel();
-        const bool modpack = !queue_.isEmpty() && queue_.last().destination.contains(QStringLiteral("/modpacks/"));
-        labelStatus_->setText(modpack
-            ? QStringLiteral("Đã tải modpack vào thư mục modpacks/ của server.")
-            : QStringLiteral("Đã cài %1 file. Khởi động lại server để áp dụng.").arg(queue_.size()));
+        labelStatus_->setText(TR("Đã cài %1 file. Khởi động lại server để áp dụng.").arg(queue_.size()));
         return;
     }
 
     const PlanItem item = queue_[queueIndex_];
-    labelStatus_->setText(QStringLiteral("Đang tải (%1/%2): %3").arg(queueIndex_ + 1).arg(queue_.size()).arg(item.file.filename));
+    labelStatus_->setText(TR("Đang tải (%1/%2): %3").arg(queueIndex_ + 1).arg(queue_.size()).arg(item.file.filename));
     progress_->setRange(0, 0);
 
     client_->DownloadFile(
@@ -836,7 +1193,7 @@ void LibraryDialog::DownloadNext()
             {
                 SetBusy(false);
                 UpdateDetailPanel();
-                labelStatus_->setText(QStringLiteral("Lỗi khi tải %1: %2 — đã dừng.").arg(item.file.filename, error));
+                labelStatus_->setText(TR("Lỗi khi tải %1: %2 — đã dừng.").arg(item.file.filename, error));
                 return;
             }
             ++queueIndex_;

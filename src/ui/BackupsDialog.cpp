@@ -1,4 +1,5 @@
 #include "ui/BackupsDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "backup/BackupManager.hpp"
 
@@ -41,7 +42,7 @@ BackupsDialog::BackupsDialog(std::shared_ptr<server::MinecraftServer> server, QW
     auto* layout = new QVBoxLayout(this);
 
     auto* hint = new QLabel(
-        QStringLiteral("Sao lưu world (world/world_nether/world_the_end) + server.properties thành file .zip. "
+        TR("Sao lưu world (world/world_nether/world_the_end) + server.properties thành file .zip. "
                         "Tự động giữ lại %1 backup gần nhất, các bản cũ hơn sẽ bị xoá.")
             .arg(backup::kMaxBackupsToKeep),
         this);
@@ -53,15 +54,15 @@ BackupsDialog::BackupsDialog(std::shared_ptr<server::MinecraftServer> server, QW
     layout->addWidget(listBackups_, 1);
 
     auto* buttonRow = new QHBoxLayout();
-    buttonCreate_ = new QPushButton(QStringLiteral("+ Tạo backup mới"), this);
+    buttonCreate_ = new QPushButton(TR("+ Tạo backup mới"), this);
     buttonCreate_->setObjectName(QStringLiteral("btnStart"));
     buttonRestore_ = new QPushButton(QStringLiteral("⭯ Restore"), this);
     buttonRestore_->setObjectName(QStringLiteral("btnRestart"));
     buttonRestore_->setEnabled(false);
-    buttonDelete_ = new QPushButton(QStringLiteral("Xoá"), this);
+    buttonDelete_ = new QPushButton(TR("Xoá"), this);
     buttonDelete_->setObjectName(QStringLiteral("btnStop"));
     buttonDelete_->setEnabled(false);
-    buttonOpenFolder_ = new QPushButton(QStringLiteral("📂 Mở thư mục backups"), this);
+    buttonOpenFolder_ = new QPushButton(TR("📂 Mở thư mục backups"), this);
     buttonOpenFolder_->setObjectName(QStringLiteral("btnNeutral"));
     buttonRow->addWidget(buttonCreate_);
     buttonRow->addWidget(buttonRestore_);
@@ -119,7 +120,7 @@ void BackupsDialog::OnSelectionChanged()
 void BackupsDialog::OnCreateClicked()
 {
     buttonCreate_->setEnabled(false);
-    labelStatus_->setText(QStringLiteral("Đang tạo backup... (có thể mất một lúc nếu world lớn)"));
+    labelStatus_->setText(TR("Đang tạo backup... (có thể mất một lúc nếu world lớn)"));
 
     const core::ServerConfig configCopy = server_->GetConfig();
     // server_ is a shared_ptr, so capturing a copy keeps it alive for the thread.
@@ -136,12 +137,12 @@ void BackupsDialog::OnCreateClicked()
                 buttonCreate_->setEnabled(true);
                 if (result.has_value())
                 {
-                    labelStatus_->setText(QStringLiteral("Đã tạo: %1").arg(QString::fromStdWString(*result)));
+                    labelStatus_->setText(TR("Đã tạo: %1").arg(QString::fromStdWString(*result)));
                 }
                 else
                 {
                     labelStatus_->setText(
-                        QStringLiteral("Không tạo được backup — server có world chưa (đã Start ít nhất 1 lần chưa)?"));
+                        TR("Không tạo được backup — server có world chưa (đã Start ít nhất 1 lần chưa)?"));
                 }
                 Refresh();
             },
@@ -163,15 +164,14 @@ void BackupsDialog::OnRestoreClicked()
         QMessageBox::warning(
             this,
             QStringLiteral("Restore"),
-            QStringLiteral("Server phải ở trạng thái Stopped mới restore được. Hãy Stop server trước rồi thử lại."));
+            TR("Server phải ở trạng thái Stopped mới restore được. Hãy Stop server trước rồi thử lại."));
         return;
     }
 
     const auto reply = QMessageBox::question(
         this,
-        QStringLiteral("Xác nhận Restore"),
-        QStringLiteral(
-            "Restore backup \"%1\"?\n\n"
+        TR("Xác nhận Restore"),
+        TR("Restore backup \"%1\"?\n\n"
             "World hiện tại (nếu có) sẽ được DI CHUYỂN (không xoá) sang một thư mục dự phòng trong "
             "backups/ trước khi ghi đè, nên vẫn lấy lại được nếu chọn nhầm bản.")
             .arg(name),
@@ -183,7 +183,7 @@ void BackupsDialog::OnRestoreClicked()
 
     buttonRestore_->setEnabled(false);
     buttonCreate_->setEnabled(false);
-    labelStatus_->setText(QStringLiteral("Đang restore..."));
+    labelStatus_->setText(TR("Đang restore..."));
 
     const core::ServerConfig configCopy = server_->GetConfig();
     const std::wstring nameCopy = name.toStdWString();
@@ -197,13 +197,13 @@ void BackupsDialog::OnRestoreClicked()
 
                 if (!result.success)
                 {
-                    labelStatus_->setText(QStringLiteral("Lỗi restore: %1").arg(QString::fromStdWString(result.errorMessage)));
+                    labelStatus_->setText(TR("Lỗi restore: %1").arg(QString::fromStdWString(result.errorMessage)));
                     return;
                 }
-                QString message = QStringLiteral("Đã restore xong. Có thể Start lại server.");
+                QString message = TR("Đã restore xong. Có thể Start lại server.");
                 if (result.safetyBackupPath.has_value())
                 {
-                    message += QStringLiteral(" World cũ đã chuyển sang: %1")
+                    message += TR(" World cũ đã chuyển sang: %1")
                         .arg(QString::fromStdWString(result.safetyBackupPath->wstring()));
                 }
                 labelStatus_->setText(message);
@@ -223,8 +223,8 @@ void BackupsDialog::OnDeleteClicked()
 
     const auto reply = QMessageBox::question(
         this,
-        QStringLiteral("Xác nhận"),
-        QStringLiteral("Xoá backup \"%1\"? Không thể hoàn tác.").arg(name),
+        TR("Xác nhận"),
+        TR("Xoá backup \"%1\"? Không thể hoàn tác.").arg(name),
         QMessageBox::Yes | QMessageBox::No);
     if (reply != QMessageBox::Yes)
     {
@@ -233,11 +233,11 @@ void BackupsDialog::OnDeleteClicked()
 
     if (backup::DeleteBackup(server_->GetConfig(), name.toStdWString()))
     {
-        labelStatus_->setText(QStringLiteral("Đã xoá %1.").arg(name));
+        labelStatus_->setText(TR("Đã xoá %1.").arg(name));
     }
     else
     {
-        labelStatus_->setText(QStringLiteral("Không xoá được %1.").arg(name));
+        labelStatus_->setText(TR("Không xoá được %1.").arg(name));
     }
     Refresh();
 }

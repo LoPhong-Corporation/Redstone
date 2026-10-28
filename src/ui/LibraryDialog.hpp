@@ -10,8 +10,9 @@
 //  - shows exactly which version/file will be installed before installing
 //  - resolves REQUIRED dependencies (e.g. Fabric API) and installs them too
 //  - downloads with a progress bar and verifies the SHA-512 Modrinth publishes
-// Installing a .mrpack modpack only downloads it into <server>/modpacks/;
-// unpacking a modpack is not implemented.
+// A .mrpack modpack is downloaded into <server>/modpacks/ and can then be
+// installed straight into the server (mods + configs, see net::ModpackInstaller);
+// the server jar / mod loader themselves are NOT installed.
 
 #include "core/Types.hpp"
 #include "net/ModrinthClient.hpp"
@@ -29,6 +30,11 @@ class QLineEdit;
 class QListWidget;
 class QListWidgetItem;
 class QProgressBar;
+class QTabWidget;
+class QTextBrowser;
+class QTableWidget;
+class QVBoxLayout;
+class QWidget;
 class QPushButton;
 
 namespace ui
@@ -64,7 +70,13 @@ private:
     void ConfirmAndRun(const std::shared_ptr<PlanState>& state);
     void DownloadNext();
     void SetBusy(bool busy);
+    void OfferModpackInstall(const QString& mrpackPath);
     void UpdateDetailPanel();
+    void ClearDetails();
+    void LoadProjectDetails();
+    void RebuildOverview();
+    void RebuildVersionsTable();
+    void RebuildGallery();
 
     [[nodiscard]] QString CurrentType() const;
     [[nodiscard]] QStringList LoadersForType(const QString& projectType) const;
@@ -81,6 +93,13 @@ private:
     QHash<QString, QListWidgetItem*> itemsByProject_;
     int searchToken_ = 0;
     int totalHits_ = 0;
+
+    // Rich details of the selected project (loaded separately from the search hit)
+    int detailToken_ = 0;
+    std::optional<net::ModrinthProjectDetail> projectDetail_;
+    QList<net::ModrinthMember> members_;
+    QList<net::ModrinthVersion> versionList_;
+    QHash<QString, QString> depTitleCache_; // version id -> "required dependencies" text
 
     // Selection / resolved version
     int selectionToken_ = 0;
@@ -106,8 +125,15 @@ private:
 
     QLabel* labelDetailTitle_ = nullptr;
     QLabel* labelDetailMeta_ = nullptr;
-    QLabel* labelDetailDescription_ = nullptr;
-    QLabel* labelDetailTags_ = nullptr;
+    QTabWidget* tabs_ = nullptr;
+    QTextBrowser* browserOverview_ = nullptr;
+    QTextBrowser* browserBody_ = nullptr;
+    QTableWidget* tableVersions_ = nullptr;
+    QTextBrowser* browserChangelog_ = nullptr;
+    QPushButton* buttonUseVersion_ = nullptr;
+    QWidget* galleryHost_ = nullptr;
+    QVBoxLayout* galleryLayout_ = nullptr;
+    QLabel* labelInstallSection_ = nullptr;
     QLabel* labelDetailVersion_ = nullptr;
     QLabel* labelDetailDeps_ = nullptr;
     QPushButton* buttonOpenWeb_ = nullptr;

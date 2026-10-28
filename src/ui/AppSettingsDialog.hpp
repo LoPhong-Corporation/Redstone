@@ -18,6 +18,8 @@ class QStackedWidget;
 class QComboBox;
 class QFontComboBox;
 class QSpinBox;
+class QTimer;
+class QPushButton;
 class QLabel;
 class QLineEdit;
 
@@ -35,9 +37,12 @@ public:
 
 signals:
     void settingsApplied();
+    void restartRequested(); // language / window scale changed and the user chose "restart now"
 
 private slots:
     void OnApplyClicked();
+    void RefreshSshStatus();
+    void OnInstallSshClicked();
 
 private:
     QWidget* BuildAppearancePage();
@@ -54,6 +59,8 @@ private:
     QComboBox* comboTheme_ = nullptr;
     QComboBox* comboAccent_ = nullptr;
     QComboBox* comboFontScale_ = nullptr;
+    QComboBox* comboUiScale_ = nullptr;
+    QComboBox* comboLanguage_ = nullptr;
 
     // Console
     QFontComboBox* comboConsoleFont_ = nullptr;
@@ -68,6 +75,10 @@ private:
     ToggleSwitch* toggleRemote_ = nullptr;
     QSpinBox* spinRemotePort_ = nullptr;
     QLineEdit* editRemoteToken_ = nullptr;
+    QLabel* labelSshStatus_ = nullptr;
+    QPushButton* buttonSshInstall_ = nullptr;
+    QTimer* sshPollTimer_ = nullptr;
+    int sshPollsLeft_ = 0;
 
     // System
     ToggleSwitch* toggleStartWithWindows_ = nullptr;

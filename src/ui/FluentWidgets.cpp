@@ -105,15 +105,18 @@ void ToggleSwitch::paintEvent(QPaintEvent*)
     }
 }
 
-QFrame* MakeSettingRow(const QString& title, const QString& description, QWidget* control, QWidget* parent)
+QFrame* MakeSettingRow(const QString& title, const QString& description, QWidget* control, QWidget* parent, bool stacked)
 {
     auto* row = new QFrame(parent);
     row->setObjectName(QStringLiteral("settingRow"));
     row->setFrameShape(QFrame::NoFrame);
 
-    auto* layout = new QHBoxLayout(row);
-    layout->setContentsMargins(16, 12, 16, 12);
+    auto* outer = new QVBoxLayout(row);
+    outer->setContentsMargins(16, 12, 16, 12);
+    outer->setSpacing(10);
+    auto* layout = new QHBoxLayout();
     layout->setSpacing(16);
+    outer->addLayout(layout);
 
     auto* textColumn = new QVBoxLayout();
     textColumn->setSpacing(2);
@@ -131,7 +134,15 @@ QFrame* MakeSettingRow(const QString& title, const QString& description, QWidget
     layout->addLayout(textColumn, 1);
 
     control->setParent(row);
-    layout->addWidget(control, 0, Qt::AlignVCenter);
+    if (stacked)
+    {
+        control->setMinimumWidth(0);
+        outer->addWidget(control); // full width under the text
+    }
+    else
+    {
+        layout->addWidget(control, 0, Qt::AlignVCenter);
+    }
     return row;
 }
 

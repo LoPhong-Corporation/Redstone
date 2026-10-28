@@ -1,4 +1,5 @@
 #include "net/ServerProviderClient.hpp"
+#include "ui/I18n.hpp"
 
 #include <QFile>
 #include <QFileInfo>
@@ -43,7 +44,7 @@ void GetJson(QNetworkAccessManager* manager, const QUrl& url, std::function<void
         const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (doc.isNull())
         {
-            onResult(QJsonDocument(), QStringLiteral("Phản hồi không phải JSON hợp lệ."));
+            onResult(QJsonDocument(), TR("Phản hồi không phải JSON hợp lệ."));
             return;
         }
         onResult(doc, QString());
@@ -113,7 +114,7 @@ void ServerProviderClient::ListVersions(ServerProviderType type, std::function<v
                     const QJsonObject root = doc.object();
                     if (root.contains(QStringLiteral("ok")) && !root.value(QStringLiteral("ok")).toBool(true))
                     {
-                        onResult({}, root.value(QStringLiteral("message")).toString(QStringLiteral("Lỗi không rõ từ PaperMC.")));
+                        onResult({}, root.value(QStringLiteral("message")).toString(TR("Lỗi không rõ từ PaperMC.")));
                         return;
                     }
                     QStringList versions;
@@ -168,7 +169,7 @@ void ServerProviderClient::ResolveServerJar(
             const auto it = vanillaVersionMetaUrls_.constFind(version);
             if (it == vanillaVersionMetaUrls_.constEnd())
             {
-                onResult(std::nullopt, QStringLiteral("Chưa có danh sách phiên bản - hãy tải danh sách trước."));
+                onResult(std::nullopt, TR("Chưa có danh sách phiên bản - hãy tải danh sách trước."));
                 return;
             }
             GetJson(manager_, QUrl(it.value()), [onResult](QJsonDocument doc, QString error) {
@@ -181,7 +182,7 @@ void ServerProviderClient::ResolveServerJar(
                 const QString url = server.value(QStringLiteral("url")).toString();
                 if (url.isEmpty())
                 {
-                    onResult(std::nullopt, QStringLiteral("Phiên bản này không có server.jar (có thể là bản quá cũ)."));
+                    onResult(std::nullopt, TR("Phiên bản này không có server.jar (có thể là bản quá cũ)."));
                     return;
                 }
                 ServerJarInfo info;
@@ -209,7 +210,7 @@ void ServerProviderClient::ResolveServerJar(
                 {
                     // An unknown/invalid version returns {"ok": false, "message": "..."} instead of an array.
                     const QString message = doc.object().value(QStringLiteral("message"))
-                        .toString(QStringLiteral("Không tìm thấy build nào cho phiên bản này."));
+                        .toString(TR("Không tìm thấy build nào cho phiên bản này."));
                     onResult(std::nullopt, message);
                     return;
                 }
@@ -233,7 +234,7 @@ void ServerProviderClient::ResolveServerJar(
                     onResult(info, QString());
                     return;
                 }
-                onResult(std::nullopt, QStringLiteral("Không tìm thấy bản STABLE nào cho phiên bản này."));
+                onResult(std::nullopt, TR("Không tìm thấy bản STABLE nào cho phiên bản này."));
             });
             return;
         }
@@ -249,7 +250,7 @@ void ServerProviderClient::ResolveServerJar(
                 const QJsonArray loaderEntries = doc.array();
                 if (loaderEntries.isEmpty())
                 {
-                    onResult(std::nullopt, QStringLiteral("Fabric chưa có loader cho phiên bản này."));
+                    onResult(std::nullopt, TR("Fabric chưa có loader cho phiên bản này."));
                     return;
                 }
                 const QString loaderVersion =
@@ -267,7 +268,7 @@ void ServerProviderClient::ResolveServerJar(
                         const QJsonArray installers = installerDoc.array();
                         if (installers.isEmpty())
                         {
-                            onResult(std::nullopt, QStringLiteral("Không lấy được phiên bản Fabric installer."));
+                            onResult(std::nullopt, TR("Không lấy được phiên bản Fabric installer."));
                             return;
                         }
                         const QString installerVersion = installers.first().toObject().value(QStringLiteral("version")).toString();
@@ -301,7 +302,7 @@ void ServerProviderClient::DownloadFile(const QString& url, const QString& desti
         QFile outFile(destinationFilePath);
         if (!outFile.open(QIODevice::WriteOnly))
         {
-            onFinished(false, QStringLiteral("Không thể ghi file: %1").arg(destinationFilePath));
+            onFinished(false, TR("Không thể ghi file: %1").arg(destinationFilePath));
             return;
         }
         outFile.write(data);

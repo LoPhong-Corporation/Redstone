@@ -1,4 +1,5 @@
 #include "ui/FluentTheme.hpp"
+#include "ui/I18n.hpp"
 
 #include <QApplication>
 #include <QDir>
@@ -169,7 +170,7 @@ QString WriteGlyphImage(const QString& name, int kind, const QColor& color)
 
 QString BuildStyleSheet(const FluentColors& c, const AppSettings& s)
 {
-    const double fs = 10.0 * s.fontScalePercent / 100.0;
+    const double fs = 10.5 * s.fontScalePercent / 100.0; // 10.5pt base: easier to read than the old 10pt
     const QString checkImg = WriteGlyphImage(QStringLiteral("check.png"), 0, QColor("#FFFFFF"));
     const QString chevDown = WriteGlyphImage(
         c.dark ? QStringLiteral("chev_down_dark.png") : QStringLiteral("chev_down_light.png"), 1, c.textSecondary);
@@ -227,8 +228,9 @@ QPushButton {
     min-height: 20px;
     color: @text@;
 }
-QPushButton:hover { background-color: @controlHover@; }
-QPushButton:pressed { background-color: @controlPressed@; color: @text2@; }
+/* hover lifts the label 1px, press pushes it down 1px (total height unchanged) */
+QPushButton:hover { background-color: @controlHover@; padding-top: 5px; padding-bottom: 7px; }
+QPushButton:pressed { background-color: @controlPressed@; color: @text2@; padding-top: 7px; padding-bottom: 5px; }
 QPushButton:focus { border: 1px solid @accentText@; }
 QPushButton:disabled { background-color: transparent; border: 1px solid @cardStroke@; color: @textDis@; }
 
@@ -374,8 +376,8 @@ QToolButton {
     background-color: transparent; border: 1px solid transparent; border-radius: 4px;
     padding: 6px 10px; color: @text@;
 }
-QToolButton:hover { background-color: @controlHover@; }
-QToolButton:pressed, QToolButton:checked { background-color: @controlPressed@; }
+QToolButton:hover { background-color: @controlHover@; padding-top: 5px; padding-bottom: 7px; }
+QToolButton:pressed, QToolButton:checked { background-color: @controlPressed@; padding-top: 7px; padding-bottom: 5px; }
 QToolButton:disabled { color: @textDis@; }
 QToolButton::menu-indicator { image: url("@chevDown@"); width: 10px; height: 10px; subcontrol-position: right center; subcontrol-origin: padding; right: 4px; }
 QToolButton[popupMode="2"] { padding-right: 20px; }
@@ -435,7 +437,7 @@ QMessageBox { background-color: @base@; }
         {QStringLiteral("@fsTitle@"), QString::number(fs * 1.5, 'f', 1)},
         {QStringLiteral("@fsPage@"), QString::number(fs * 2.0, 'f', 1)},
         {QStringLiteral("@fsSub@"), QString::number(fs * 1.1, 'f', 1)},
-        {QStringLiteral("@fsSmall@"), QString::number(fs * 0.85, 'f', 1)},
+        {QStringLiteral("@fsSmall@"), QString::number(fs * 0.9, 'f', 1)},
         {QStringLiteral("@fs@"), QString::number(fs, 'f', 1)},
         {QStringLiteral("@check@"), checkImg},
         {QStringLiteral("@chevDown@"), chevDown},
@@ -525,7 +527,7 @@ QStringList FluentTheme::AccentNames()
     QStringList names;
     for (const auto& preset : kAccents)
     {
-        names << QString::fromUtf8(preset.name);
+        names << i18n::Tr(QString::fromUtf8(preset.name));
     }
     return names;
 }

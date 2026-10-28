@@ -1,4 +1,5 @@
 #include "ui/ImportServerDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "server/ServerImporter.hpp"
 
@@ -19,14 +20,14 @@ namespace ui
 ImportServerDialog::ImportServerDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(QStringLiteral("Import Server Có Sẵn"));
+    setWindowTitle(TR("Import Server Có Sẵn"));
     setModal(true);
     resize(480, 380);
 
     auto* form = new QFormLayout();
 
     editName_ = new QLineEdit(this);
-    form->addRow(QStringLiteral("Tên server:"), editName_);
+    form->addRow(TR("Tên server:"), editName_);
 
     auto* dirRow = new QWidget(this);
     auto* dirLayout = new QHBoxLayout(dirRow);
@@ -38,11 +39,11 @@ ImportServerDialog::ImportServerDialog(QWidget* parent)
     browseDirButton->setObjectName(QStringLiteral("btnNeutral"));
     browseDirButton->setFixedWidth(36);
     dirLayout->addWidget(browseDirButton);
-    form->addRow(QStringLiteral("Thư mục server có sẵn:"), dirRow);
+    form->addRow(TR("Thư mục server có sẵn:"), dirRow);
     connect(browseDirButton, &QPushButton::clicked, this, &ImportServerDialog::OnBrowseDirectory);
 
     labelDetected_ = new QLabel(
-        QStringLiteral("Chọn thư mục chứa server đã có sẵn (đã có file .jar) để quét tự động."), this);
+        TR("Chọn thư mục chứa server đã có sẵn (đã có file .jar) để quét tự động."), this);
     labelDetected_->setObjectName(QStringLiteral("hintLabel"));
     labelDetected_->setWordWrap(true);
     form->addRow(QString(), labelDetected_);
@@ -58,18 +59,18 @@ ImportServerDialog::ImportServerDialog(QWidget* parent)
     browseJavaButton->setObjectName(QStringLiteral("btnNeutral"));
     browseJavaButton->setFixedWidth(36);
     javaLayout->addWidget(browseJavaButton);
-    form->addRow(QStringLiteral("Đường dẫn java.exe:"), javaRow);
+    form->addRow(TR("Đường dẫn java.exe:"), javaRow);
     connect(browseJavaButton, &QPushButton::clicked, this, &ImportServerDialog::OnBrowseJavaPath);
 
     editMinMemory_ = new QLineEdit(this);
     editMinMemory_->setText(QStringLiteral("1024"));
     editMinMemory_->setValidator(new QIntValidator(1, 1000000, this));
-    form->addRow(QStringLiteral("RAM tối thiểu (MB):"), editMinMemory_);
+    form->addRow(TR("RAM tối thiểu (MB):"), editMinMemory_);
 
     editMaxMemory_ = new QLineEdit(this);
     editMaxMemory_->setText(QStringLiteral("2048"));
     editMaxMemory_->setValidator(new QIntValidator(1, 1000000, this));
-    form->addRow(QStringLiteral("RAM tối đa (MB):"), editMaxMemory_);
+    form->addRow(TR("RAM tối đa (MB):"), editMaxMemory_);
 
     labelError_ = new QLabel(this);
     labelError_->setStyleSheet(QStringLiteral("color: #d9534f;"));
@@ -78,7 +79,7 @@ ImportServerDialog::ImportServerDialog(QWidget* parent)
     auto* buttons = new QDialogButtonBox(this);
     auto* importButton = buttons->addButton(QStringLiteral("Import"), QDialogButtonBox::AcceptRole);
     importButton->setObjectName(QStringLiteral("btnStart"));
-    auto* cancelButton = buttons->addButton(QStringLiteral("Hủy"), QDialogButtonBox::RejectRole);
+    auto* cancelButton = buttons->addButton(TR("Hủy"), QDialogButtonBox::RejectRole);
     cancelButton->setObjectName(QStringLiteral("btnNeutral"));
     connect(importButton, &QPushButton::clicked, this, &ImportServerDialog::OnImportClicked);
     connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -92,7 +93,7 @@ ImportServerDialog::ImportServerDialog(QWidget* parent)
 void ImportServerDialog::OnBrowseDirectory()
 {
     const QString chosen = QFileDialog::getExistingDirectory(
-        this, QStringLiteral("Chọn thư mục server có sẵn"), QDir::homePath());
+        this, TR("Chọn thư mục server có sẵn"), QDir::homePath());
     if (!chosen.isEmpty())
     {
         editDirectory_->setText(QDir::toNativeSeparators(chosen));
@@ -103,7 +104,7 @@ void ImportServerDialog::OnBrowseDirectory()
 void ImportServerDialog::OnBrowseJavaPath()
 {
     const QString chosen = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn java.exe"), QString(), QStringLiteral("java.exe;;Executable (*.exe)"));
+        this, TR("Chọn java.exe"), QString(), QStringLiteral("java.exe;;Executable (*.exe)"));
     if (!chosen.isEmpty())
     {
         editJavaPath_->setText(QDir::toNativeSeparators(chosen));
@@ -123,7 +124,7 @@ void ImportServerDialog::RescanDirectory()
     if (!scanned.has_value())
     {
         labelDetected_->setText(
-            QStringLiteral("Không tìm thấy file .jar nào trong thư mục này. Kiểm tra lại đường dẫn."));
+            TR("Không tìm thấy file .jar nào trong thư mục này. Kiểm tra lại đường dẫn."));
         return;
     }
 
@@ -132,7 +133,7 @@ void ImportServerDialog::RescanDirectory()
     detectedPort_ = scanned->port;
     hasScanResult_ = true;
 
-    labelDetected_->setText(QStringLiteral("Tìm thấy: %1  ·  Loại đoán: %2  ·  Port: %3")
+    labelDetected_->setText(TR("Tìm thấy: %1  ·  Loại đoán: %2  ·  Port: %3")
         .arg(QString::fromStdWString(detectedJarFilename_), QString::fromStdWString(detectedType_))
         .arg(detectedPort_));
 
@@ -151,12 +152,12 @@ void ImportServerDialog::OnImportClicked()
 
     if (name.isEmpty() || directory.isEmpty() || javaPath.isEmpty())
     {
-        labelError_->setText(QStringLiteral("Vui lòng điền đầy đủ Tên, Thư mục và đường dẫn Java."));
+        labelError_->setText(TR("Vui lòng điền đầy đủ Tên, Thư mục và đường dẫn Java."));
         return;
     }
     if (!hasScanResult_)
     {
-        labelError_->setText(QStringLiteral("Chưa quét được file jar nào - kiểm tra lại Thư mục server."));
+        labelError_->setText(TR("Chưa quét được file jar nào - kiểm tra lại Thư mục server."));
         return;
     }
 
@@ -166,7 +167,7 @@ void ImportServerDialog::OnImportClicked()
     const unsigned long maxMemory = editMaxMemory_->text().toULong(&maxOk);
     if (!minOk || !maxOk || minMemory > maxMemory)
     {
-        labelError_->setText(QStringLiteral("RAM tối thiểu/tối đa không hợp lệ."));
+        labelError_->setText(TR("RAM tối thiểu/tối đa không hợp lệ."));
         return;
     }
 

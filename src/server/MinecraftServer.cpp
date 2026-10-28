@@ -1,6 +1,7 @@
 #include "server/MinecraftServer.hpp"
 
 #include "backup/BackupManager.hpp"
+#include "core/Localize.hpp"
 #include "core/Logger.hpp"
 
 #include <algorithm>
@@ -117,7 +118,7 @@ bool MinecraftServer::Start()
         return false;
     }
 
-    consoleBuffer_.Append(L"[manager] Starting server process...");
+    consoleBuffer_.Append(core::Localize(L"[manager] Starting server process..."));
 
     stdoutController_.Start(process_.GetStdoutReadHandle(), [this](const std::wstring& line) {
         OnConsoleLine(line);
@@ -182,7 +183,7 @@ bool MinecraftServer::Stop(std::chrono::milliseconds timeout)
     const auto timeoutMs = static_cast<DWORD>(timeout.count());
     if (!process_.Wait(timeoutMs))
     {
-        consoleBuffer_.Append(L"[manager] Graceful stop timed out, killing process...");
+        consoleBuffer_.Append(core::Localize(L"[manager] Graceful stop timed out, killing process..."));
         process_.Terminate(1);
         process_.Wait(5000); // bounded wait for the watcher thread to observe the exit
     }
@@ -196,7 +197,7 @@ bool MinecraftServer::Stop(std::chrono::milliseconds timeout)
 
 bool MinecraftServer::Restart()
 {
-    consoleBuffer_.Append(L"[manager] Restarting server...");
+    consoleBuffer_.Append(core::Localize(L"[manager] Restarting server..."));
     if (GetState() == core::ServerState::Running || GetState() == core::ServerState::Stopping)
     {
         Stop();
@@ -228,7 +229,7 @@ bool MinecraftServer::PrepareForBackup(std::chrono::seconds timeout)
 
     if (!flushConfirmed_)
     {
-        consoleBuffer_.Append(L"[manager] Không nhận được xác nhận 'save-all' trong thời gian chờ, vẫn tiếp tục backup.");
+        consoleBuffer_.Append(core::Localize(L"[manager] Không nhận được xác nhận 'save-all' trong thời gian chờ, vẫn tiếp tục backup."));
     }
     return flushConfirmed_;
 }
@@ -370,7 +371,7 @@ void MinecraftServer::WatchForExit()
 
     if (wasStopRequested)
     {
-        consoleBuffer_.Append(L"[manager] Server process stopped.");
+        consoleBuffer_.Append(core::Localize(L"[manager] Server process stopped."));
         SetState(core::ServerState::Stopped);
         if (IsTunnelRunning())
         {
@@ -380,7 +381,7 @@ void MinecraftServer::WatchForExit()
     else
     {
         consoleBuffer_.Append(
-            std::format(L"[manager] Server process exited unexpectedly (exit code {}).", exitCode));
+            std::vformat(core::Localize(L"[manager] Server process exited unexpectedly (exit code {})."), std::make_wformat_args(exitCode)));
         HandleUnexpectedExit();
     }
 }
@@ -407,8 +408,7 @@ void MinecraftServer::HandleUnexpectedExit()
     if (IsEulaNotAccepted())
     {
         consoleBuffer_.Append(
-            L"[manager] Server dừng vì chưa chấp nhận Minecraft EULA. "
-            L"Dùng nút \"📜 Chấp nhận EULA\" trên toolbar rồi Start lại.");
+            core::Localize(L"[manager] Server dừng vì chưa chấp nhận Minecraft EULA. Dùng nút \"📜 Chấp nhận EULA\" trên toolbar rồi Start lại."));
         if (events_)
         {
             core::AppEvent eulaEvent;
@@ -425,7 +425,7 @@ void MinecraftServer::HandleUnexpectedExit()
     }
 
     SetState(core::ServerState::Restarting);
-    consoleBuffer_.Append(L"[manager] Auto-restart scheduled...");
+    consoleBuffer_.Append(core::Localize(L"[manager] Auto-restart scheduled..."));
 
     // Restarting must NOT happen synchronously here: Start() will replace
     // watcherThread_ with a new std::jthread, and reassigning a jthread
@@ -521,7 +521,7 @@ bool MinecraftServer::ShouldAutoRestart()
 
     if (static_cast<int>(recentRestarts_.size()) >= kMaxAutoRestarts)
     {
-        consoleBuffer_.Append(L"[manager] Auto-restart limit reached (5 within 10 minutes). Giving up.");
+        consoleBuffer_.Append(core::Localize(L"[manager] Auto-restart limit reached (5 within 10 minutes). Giving up."));
         return false;
     }
 
@@ -533,7 +533,7 @@ bool MinecraftServer::StartTunnel()
 {
     if (config_.tunnel.executablePath.empty())
     {
-        consoleBuffer_.Append(L"[manager] Chưa cấu hình đường dẫn cho tunnel (Playit.gg/Cloudflare Tunnel/...).");
+        consoleBuffer_.Append(core::Localize(L"[manager] Chưa cấu hình đường dẫn cho tunnel (Playit.gg/Cloudflare Tunnel/...)."));
         return false;
     }
     if (tunnelProcess_.IsRunning())
@@ -548,7 +548,7 @@ bool MinecraftServer::StartTunnel()
 
     if (!tunnelProcess_.Start(options))
     {
-        consoleBuffer_.Append(L"[manager] Không khởi động được tunnel process.");
+        consoleBuffer_.Append(core::Localize(L"[manager] Không khởi động được tunnel process."));
         return false;
     }
 
@@ -559,7 +559,7 @@ bool MinecraftServer::StartTunnel()
         OnConsoleLine(L"[tunnel] " + line);
     });
 
-    consoleBuffer_.Append(L"[manager] Tunnel process started.");
+    consoleBuffer_.Append(core::Localize(L"[manager] Tunnel process started."));
     return true;
 }
 
@@ -576,7 +576,7 @@ bool MinecraftServer::StopTunnel()
     tunnelProcess_.Terminate(0);
     tunnelStdoutController_.Stop();
     tunnelStderrController_.Stop();
-    consoleBuffer_.Append(L"[manager] Tunnel process stopped.");
+    consoleBuffer_.Append(core::Localize(L"[manager] Tunnel process stopped."));
     return true;
 }
 
@@ -613,7 +613,7 @@ void MinecraftServer::ScheduledRestartLoop(std::stop_token stopToken)
 
         if (GetState() == core::ServerState::Running)
         {
-            process_.WriteLine(L"say [Manager] Server sẽ tự khởi động lại sau 60 giây.");
+            process_.WriteLine(core::Localize(L"say [Manager] Server sẽ tự khởi động lại sau 60 giây."));
         }
 
         InterruptibleSleep(kWarningLeadTime, stopToken);
@@ -703,13 +703,13 @@ void MinecraftServer::AutoBackupLoop(std::stop_token stopToken)
         {
             continue;
         }
-        consoleBuffer_.Append(L"[manager] Auto backup...");
+        consoleBuffer_.Append(core::Localize(L"[manager] Auto backup..."));
         PrepareForBackup();
         const auto result = backup::CreateBackup(config_);
         FinishBackup();
         consoleBuffer_.Append(result.has_value()
-            ? L"[manager] Auto backup xong: " + *result
-            : L"[manager] Auto backup thất bại (chưa có world?).");
+            ? core::Localize(L"[manager] Auto backup xong: ") + *result
+            : core::Localize(L"[manager] Auto backup thất bại (chưa có world?)."));
     }
 }
 

@@ -42,7 +42,9 @@ private:
 
 // A Fluent "settings card" row: title + description on the left, the
 // control on the right. `control` is reparented into the row.
-QFrame* MakeSettingRow(const QString& title, const QString& description, QWidget* control, QWidget* parent = nullptr);
+// `stacked` puts the control UNDER the text (full width) - for wide controls such as a
+// token field or a command line, which would otherwise squeeze the text into a sliver.
+QFrame* MakeSettingRow(const QString& title, const QString& description, QWidget* control, QWidget* parent = nullptr, bool stacked = false);
 
 // Convenience: row whose control is a new ToggleSwitch, returned via out param.
 QFrame* MakeToggleRow(const QString& title, const QString& description, ToggleSwitch*& toggleOut, QWidget* parent = nullptr);

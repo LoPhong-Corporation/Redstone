@@ -1,4 +1,5 @@
 #include "ui/PropertiesDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "config/ServerProperties.hpp"
 #include "ui/FluentTheme.hpp"
@@ -115,8 +116,8 @@ PropertiesDialog::PropertiesDialog(core::ServerConfig server, QWidget* parent)
     auto* header = new QVBoxLayout();
     AddPageHeader(
         header,
-        QStringLiteral("Cài đặt gameplay & mạng"),
-        QStringLiteral("Chỉnh server.properties bằng giao diện. Các dòng không có ở đây được giữ nguyên khi lưu."));
+        TR("Cài đặt gameplay & mạng"),
+        TR("Chỉnh server.properties bằng giao diện. Các dòng không có ở đây được giữ nguyên khi lưu."));
     root->addLayout(header);
 
     auto* tabs = new QTabWidget(this);
@@ -134,7 +135,7 @@ PropertiesDialog::PropertiesDialog(core::ServerConfig server, QWidget* parent)
         layout->setContentsMargins(0, 12, 10, 8);
         layout->setSpacing(8);
         scroll->setWidget(content);
-        tabs->addTab(scroll, QString::fromUtf8(kTabNames[t]).replace(QLatin1Char('&'), QStringLiteral("&&"))); // "&&" = literal & (no mnemonic)
+        tabs->addTab(scroll, i18n::Tr(QString::fromUtf8(kTabNames[t])).replace(QLatin1Char('&'), QStringLiteral("&&"))); // "&&" = literal & (no mnemonic)
         tabLayouts.push_back(layout);
     }
 
@@ -179,7 +180,7 @@ PropertiesDialog::PropertiesDialog(core::ServerConfig server, QWidget* parent)
         }
         widgets_[static_cast<size_t>(i)] = control;
         tabLayouts[static_cast<size_t>(f.tab)]->addWidget(
-            MakeSettingRow(QString::fromUtf8(f.title), QString::fromUtf8(f.description), control));
+            MakeSettingRow(i18n::Tr(QString::fromUtf8(f.title)), i18n::Tr(QString::fromUtf8(f.description)), control));
     }
     for (auto* layout : tabLayouts)
     {
@@ -191,11 +192,11 @@ PropertiesDialog::PropertiesDialog(core::ServerConfig server, QWidget* parent)
     labelStatus_->setObjectName(QStringLiteral("hintLabel"));
     labelStatus_->setWordWrap(true);
     footer->addWidget(labelStatus_, 1);
-    auto* reloadButton = new QPushButton(QStringLiteral("Tải lại"), this);
+    auto* reloadButton = new QPushButton(TR("Tải lại"), this);
     reloadButton->setObjectName(QStringLiteral("btnNeutral"));
-    auto* saveButton = new QPushButton(QStringLiteral("Lưu"), this);
+    auto* saveButton = new QPushButton(TR("Lưu"), this);
     saveButton->setObjectName(QStringLiteral("btnStart"));
-    auto* closeButton = new QPushButton(QStringLiteral("Đóng"), this);
+    auto* closeButton = new QPushButton(TR("Đóng"), this);
     closeButton->setObjectName(QStringLiteral("btnNeutral"));
     footer->addWidget(reloadButton);
     footer->addWidget(saveButton);
@@ -213,7 +214,7 @@ void PropertiesDialog::LoadFromFile()
 {
     loaded_ = config::ReadServerProperties(server_);
     labelStatus_->setText(loaded_.empty()
-        ? QStringLiteral("Chưa tìm thấy server.properties — hãy Start server ít nhất 1 lần để Minecraft tự tạo file này. "
+        ? TR("Chưa tìm thấy server.properties — hãy Start server ít nhất 1 lần để Minecraft tự tạo file này. "
                          "Bạn vẫn có thể lưu: file sẽ được tạo mới.")
         : QString());
 
@@ -290,11 +291,11 @@ void PropertiesDialog::OnSaveClicked()
     if (config::WriteServerProperties(server_, updates))
     {
         loaded_ = config::ReadServerProperties(server_);
-        labelStatus_->setText(QStringLiteral("Đã lưu. Khởi động lại server để áp dụng."));
+        labelStatus_->setText(TR("Đã lưu. Khởi động lại server để áp dụng."));
     }
     else
     {
-        labelStatus_->setText(QStringLiteral("Lỗi: không ghi được server.properties."));
+        labelStatus_->setText(TR("Lỗi: không ghi được server.properties."));
     }
 }
 

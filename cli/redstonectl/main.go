@@ -37,6 +37,9 @@ type globalFlags struct {
 	timeout   time.Duration
 	showHelp  bool
 	showVer   bool
+	yes       bool
+	lang      string
+	noBanner  bool
 }
 
 func newGlobalFlagSet(g *globalFlags) *flag.FlagSet {
@@ -52,6 +55,10 @@ func newGlobalFlagSet(g *globalFlags) *flag.FlagSet {
 	fs.StringVar(&g.identity, "ssh-identity", "", "")
 	fs.BoolVar(&g.json, "json", false, "")
 	fs.BoolVar(&g.noColor, "no-color", false, "")
+	fs.BoolVar(&g.yes, "yes", false, "")
+	fs.BoolVar(&g.yes, "y", false, "")
+	fs.StringVar(&g.lang, "lang", "", "")
+	fs.BoolVar(&g.noBanner, "no-banner", false, "")
 	fs.DurationVar(&g.timeout, "timeout", 30*time.Second, "")
 	fs.BoolVar(&g.showHelp, "help", false, "")
 	fs.BoolVar(&g.showHelp, "h", false, "")
@@ -66,12 +73,15 @@ func main() {
 func run(args []string) int {
 	var g globalFlags
 	fs := newGlobalFlagSet(&g)
-	if err := fs.Parse(args); err != nil {
-		fmt.Fprintln(os.Stderr, "Lỗi:", err)
-		fmt.Fprintln(os.Stderr, "Dùng `redstonectl help` để xem hướng dẫn.")
+	parseErr := fs.Parse(args)
+	lang = detectLang(g.lang)
+	initColor(g.noColor)
+	buildCommands()
+	if parseErr != nil {
+		printError(parseErr.Error())
+		printInfoErr(T("Dùng `redstonectl help` để xem hướng dẫn."))
 		return 2
 	}
-	initColor(g.noColor)
 	rest := fs.Args()
 
 	if g.showVer {
@@ -79,7 +89,14 @@ func run(args []string) int {
 		return 0
 	}
 	if g.showHelp || len(rest) == 0 || rest[0] == "help" {
+		if !g.noBanner && isTerminal(os.Stdout) {
+			printBanner(os.Stdout)
+		}
 		printHelp(rest)
+		return 0
+	}
+	if rest[0] == "banner" {
+		printBanner(os.Stdout)
 		return 0
 	}
 	switch rest[0] {
@@ -101,15 +118,19 @@ func run(args []string) int {
 	addr := net.JoinHostPort(settings.Host, strconv.Itoa(settings.Port))
 	var tunnel *Tunnel
 	if settings.SSH != "" {
-		fmt.Fprintf(os.Stderr, "Đang mở đường hầm SSH tới %s...\n", settings.SSH)
-		tunnel, err = StartTunnel(settings.SSH, settings.SSHPort, settings.Identity, settings.Port, 90*time.Second)
+		sshBin, sshErr := ensureSSH(g.yes)
+		if sshErr != nil {
+			return exitCode(sshErr)
+		}
+		printInfoErr(fmt.Sprintf(T("Đang mở đường hầm SSH tới %s..."), cyan(settings.SSH)))
+		tunnel, err = StartTunnel(sshBin, settings.SSH, settings.SSHPort, settings.Identity, settings.Port, 90*time.Second)
 		if err != nil {
 			return exitCode(err)
 		}
 		defer tunnel.Close()
 		addr = tunnel.LocalAddr
 	} else if ip := net.ParseIP(settings.Host); settings.Host != "localhost" && (ip == nil || !ip.IsLoopback()) {
-		fmt.Fprintln(os.Stderr, "Cảnh báo: kết nối không phải loopback và không qua SSH - dữ liệu đi dưới dạng văn bản thường. Hãy dùng --ssh.")
+		printWarning(T("kết nối không phải loopback và không qua SSH - dữ liệu đi dưới dạng văn bản thường. Hãy dùng --ssh."))
 	}
 
 	client, err := Dial(addr, settings.Token, 10*time.Second)
@@ -140,7 +161,7 @@ func exitCode(err error) int {
 	if err == nil {
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "Lỗi:", strings.TrimPrefix(err.Error(), "usage: "))
+	printError(strings.TrimPrefix(err.Error(), "usage: "))
 	if errors.Is(err, errUsage) {
 		return 2
 	}
@@ -158,7 +179,7 @@ func resolveSettings(g *globalFlags) (*Settings, error) {
 		var ok bool
 		p, ok = cfg.Profiles[name]
 		if !ok {
-			return nil, fmt.Errorf("không có profile %q (xem `redstonectl profile list`)", name)
+			return nil, fmt.Errorf(T("không có profile %q (xem `redstonectl profile list`)"), name)
 		}
 	}
 
@@ -191,7 +212,7 @@ func resolveSettings(g *globalFlags) (*Settings, error) {
 		}
 	}
 	if s.Token == "" {
-		return nil, errors.New("chưa có token. Dùng --token, --token-file, biến REDSTONE_TOKEN hoặc `redstonectl profile add` (token xem trong app: Cài đặt > Điều khiển từ xa)")
+		return nil, errors.New(T("chưa có token. Dùng --token, --token-file, biến REDSTONE_TOKEN hoặc `redstonectl profile add` (token xem trong app: Cài đặt > Điều khiển từ xa)"))
 	}
 	return s, nil
 }
@@ -232,7 +253,7 @@ func runProfile(args []string) error {
 	switch args[0] {
 	case "list":
 		if len(cfg.Profiles) == 0 {
-			fmt.Println("Chưa có profile nào. Thêm bằng: redstonectl profile add <tên> --ssh user@host --token ...")
+			fmt.Println(T("Chưa có profile nào. Thêm bằng: redstonectl profile add <tên> --ssh user@host --token ..."))
 			return nil
 		}
 		for _, n := range cfg.names() {
@@ -242,13 +263,13 @@ func runProfile(args []string) error {
 				mark = "*"
 			}
 			target := firstNonEmpty(p.SSH, firstNonEmpty(p.Host, "127.0.0.1"))
-			via := "trực tiếp"
+			via := T("trực tiếp")
 			if p.SSH != "" {
 				via = "qua SSH"
 			}
-			token := "(chưa có)"
+			token := T("(chưa có)")
 			if p.Token != "" {
-				token = "đã lưu"
+				token = T("đã lưu")
 			} else if p.TokenFile != "" {
 				token = "file " + p.TokenFile
 			}
@@ -257,10 +278,10 @@ func runProfile(args []string) error {
 		return nil
 	case "remove":
 		if len(args) != 2 {
-			return fmt.Errorf("%w: redstonectl profile remove <tên>", errUsage)
+			return fmt.Errorf(T("%w: redstonectl profile remove <tên>"), errUsage)
 		}
 		if _, ok := cfg.Profiles[args[1]]; !ok {
-			return fmt.Errorf("không có profile %q", args[1])
+			return fmt.Errorf(T("không có profile %q"), args[1])
 		}
 		delete(cfg.Profiles, args[1])
 		if cfg.Default == args[1] {
@@ -269,10 +290,10 @@ func runProfile(args []string) error {
 		return cfg.Save()
 	case "use":
 		if len(args) != 2 {
-			return fmt.Errorf("%w: redstonectl profile use <tên>", errUsage)
+			return fmt.Errorf(T("%w: redstonectl profile use <tên>"), errUsage)
 		}
 		if _, ok := cfg.Profiles[args[1]]; !ok {
-			return fmt.Errorf("không có profile %q", args[1])
+			return fmt.Errorf(T("không có profile %q"), args[1])
 		}
 		cfg.Default = args[1]
 		return cfg.Save()
@@ -289,10 +310,10 @@ func runProfile(args []string) error {
 		fs.StringVar(&p.Identity, "ssh-identity", "", "")
 		pos, err := parseInterspersed(fs, args[1:])
 		if err != nil || len(pos) != 1 {
-			return fmt.Errorf("%w: redstonectl profile add <tên> [--ssh user@host] [--token ..|--token-file ..] [--port N] [--default]", errUsage)
+			return fmt.Errorf(T("%w: redstonectl profile add <tên> [--ssh user@host] [--token ..|--token-file ..] [--port N] [--default]"), errUsage)
 		}
 		if p.Token == "" && p.TokenFile == "" {
-			return fmt.Errorf("%w: cần --token hoặc --token-file", errUsage)
+			return fmt.Errorf(T("%w: cần --token hoặc --token-file"), errUsage)
 		}
 		cfg.Profiles[pos[0]] = p
 		if *makeDefault || cfg.Default == "" {
@@ -302,10 +323,10 @@ func runProfile(args []string) error {
 			return err
 		}
 		path, _ := configPath()
-		fmt.Printf("Đã lưu profile %q vào %s (quyền 0600).\n", pos[0], path)
+		fmt.Printf(T("Đã lưu profile %q vào %s (quyền 0600).\n"), pos[0], path)
 		return nil
 	}
-	return fmt.Errorf("%w: lệnh profile không hợp lệ %q", errUsage, args[0])
+	return fmt.Errorf(T("%w: lệnh profile không hợp lệ %q"), errUsage, args[0])
 }
 
 // --------------------------------------------------------------------- shell
@@ -338,7 +359,7 @@ func splitArgs(line string) ([]string, error) {
 		}
 	}
 	if quote != 0 {
-		return nil, errors.New("thiếu dấu nháy đóng")
+		return nil, errors.New(T("thiếu dấu nháy đóng"))
 	}
 	if inWord {
 		words = append(words, cur.String())
@@ -350,7 +371,10 @@ func runShell(env *Env) error {
 	fi, _ := os.Stdin.Stat()
 	interactive := fi != nil && fi.Mode()&os.ModeCharDevice != 0
 	if interactive {
-		fmt.Println("redstonectl shell - gõ `help` để xem lệnh, `use <server>` để chọn server mặc định, `exit` để thoát.")
+		if isTerminal(os.Stdout) {
+			printBanner(os.Stdout)
+		}
+		fmt.Println(T("redstonectl shell - gõ `help` để xem lệnh, `use <server>` để chọn server mặc định, `exit` để thoát."))
 	}
 	sc := bufio.NewScanner(os.Stdin)
 	sc.Buffer(make([]byte, 64*1024), 1<<20)
@@ -367,7 +391,7 @@ func runShell(env *Env) error {
 		}
 		words, err := splitArgs(strings.TrimSpace(sc.Text()))
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Lỗi:", err)
+			printError(err.Error())
 			continue
 		}
 		if len(words) == 0 {
@@ -388,9 +412,9 @@ func runShell(env *Env) error {
 			continue
 		}
 		if err := RunCommand(env, words); err != nil {
-			fmt.Fprintln(os.Stderr, "Lỗi:", strings.TrimPrefix(err.Error(), "usage: "))
+			printError(strings.TrimPrefix(err.Error(), "usage: "))
 			if env.Client.readErrSet() {
-				return errors.New("mất kết nối tới app")
+				return errors.New(T("mất kết nối tới app"))
 			}
 		}
 	}
@@ -404,44 +428,51 @@ func (c *Client) readErrSet() bool {
 
 // ---------------------------------------------------------------------- help
 
-func printHelp(rest []string) {
-	fmt.Print(`redstonectl ` + version + ` - điều khiển từ xa Redstone (Minecraft Server Manager)
+func helpLine(name, args, help string) {
+	fmt.Printf("  %s %s %s\n", cyan(fmt.Sprintf("%-10s", name)), dim(fmt.Sprintf("%-44s", args)), T(help))
+}
 
-CÁCH DÙNG
-  redstonectl [tuỳ chọn chung] <lệnh> [tham số]
+func flagLine(flagText, help string) {
+	fmt.Printf("  %s %s\n", green(fmt.Sprintf("%-26s", flagText)), T(help))
+}
 
-KẾT NỐI
-  Cùng máy:    redstonectl --token <token> list
-  Từ xa (SSH): redstonectl --ssh bạn@may-chu --token <token> list
-  Lưu lại:     redstonectl profile add home --ssh bạn@may-chu --token <token> --default
-               redstonectl list            (dùng profile mặc định)
-  Token lấy trong app: Cài đặt > Điều khiển từ xa.
+func printHelp(_ []string) {
+	fmt.Printf("%s %s - %s\n\n", bold(heading("redstonectl")), dim(version), T("điều khiển từ xa Redstone (Minecraft Server Manager)"))
 
-TUỲ CHỌN CHUNG
-  --profile <tên>       dùng profile đã lưu           (env REDSTONE_PROFILE)
-  --host <ip>           mặc định 127.0.0.1             (env REDSTONE_HOST)
-  --port <n>            mặc định 25585                 (env REDSTONE_PORT)
-  --token <t>           token truy cập                 (env REDSTONE_TOKEN)
-  --token-file <file>   đọc token từ file              (env REDSTONE_TOKEN_FILE)
-  --ssh <user@host>     đi qua đường hầm OpenSSH       (env REDSTONE_SSH)
-  --ssh-port <n>        port SSH, mặc định 22
-  --ssh-identity <key>  file khoá riêng SSH (-i)
-  --json                in kết quả JSON thô
-  --timeout <thời gian> chờ phản hồi mỗi lệnh, mặc định 30s
-  --no-color            tắt màu
-  REDSTONE_SERVER       server mặc định để bỏ qua tham số <server>
+	fmt.Println(heading(T("CÁCH DÙNG")))
+	fmt.Printf("  redstonectl %s %s %s\n\n", dim("["+T("tuỳ chọn chung")+"]"), cyan("<"+T("lệnh")+">"), dim("["+T("tham số")+"]"))
 
-LỆNH
-`)
+	fmt.Println(heading(T("KẾT NỐI")))
+	fmt.Printf("  %s  redstonectl --token <token> list\n", dim(fmt.Sprintf("%-12s", T("Cùng máy:"))))
+	fmt.Printf(T("  %s  redstonectl --ssh bạn@may-chu --token <token> list\n"), dim(fmt.Sprintf("%-12s", T("Từ xa (SSH):"))))
+	fmt.Printf(T("  %s  redstonectl profile add home --ssh bạn@may-chu --token <token> --default\n"), dim(fmt.Sprintf("%-12s", T("Lưu lại:"))))
+	fmt.Printf("  %s\n\n", T("Token lấy trong app: Cài đặt > Điều khiển từ xa. Chưa có OpenSSH? CLI sẽ hỏi và cài giúp bạn."))
+
+	fmt.Println(heading(T("TUỲ CHỌN CHUNG")))
+	flagLine(T("--profile <tên>"), T("dùng profile đã lưu"))
+	flagLine("--host <ip>", T("mặc định 127.0.0.1"))
+	flagLine("--port <n>", T("mặc định 25585"))
+	flagLine("--token <t>", T("token truy cập (env REDSTONE_TOKEN)"))
+	flagLine("--token-file <file>", T("đọc token từ file"))
+	flagLine("--ssh <user@host>", T("đi qua đường hầm OpenSSH (env REDSTONE_SSH)"))
+	flagLine("--ssh-port <n>", T("port SSH, mặc định 22"))
+	flagLine("--ssh-identity <key>", T("file khoá riêng SSH (-i)"))
+	flagLine("--yes, -y", T("tự đồng ý khi hỏi (vd: cài OpenSSH)"))
+	flagLine("--lang vi|en", T("ngôn ngữ (env REDSTONE_LANG)"))
+	flagLine("--json", T("in kết quả JSON thô"))
+	flagLine(T("--timeout <thời gian>"), T("chờ phản hồi mỗi lệnh, mặc định 30s"))
+	flagLine("--no-color, --no-banner", T("tắt màu / tắt logo"))
+	flagLine("REDSTONE_SERVER", T("server mặc định để bỏ qua tham số <server>"))
+	fmt.Println()
+
+	fmt.Println(heading(T("LỆNH")))
 	for _, c := range commands {
-		fmt.Printf("  %-10s %-44s %s\n", c.Name, c.Args, c.Help)
+		helpLine(c.Name, c.Args, c.Help)
 	}
-	fmt.Print(`  shell      [server]                                     Phiên tương tác (giữ một kết nối)
-  profile    add|list|remove|use                          Quản lý profile kết nối
-  help, version
-
-<server> là tên (không phân biệt hoa/thường) hoặc id server trong app.
-Chỉ những thao tác có trong app được hỗ trợ; không thể thêm/xoá server,
-khôi phục backup hay đổi cài đặt app từ xa.
-`)
+	helpLine("shell", "[server]", T("Phiên tương tác (giữ một kết nối)"))
+	helpLine("profile", "add|list|remove|use", T("Quản lý profile kết nối"))
+	helpLine("help, version", "", T("Trợ giúp / phiên bản"))
+	fmt.Println()
+	fmt.Println(dim(T("<server> là tên (không phân biệt hoa/thường) hoặc id server trong app.")))
+	fmt.Println(dim(T("Chỉ những thao tác có trong app được hỗ trợ; không thể thêm/xoá server, khôi phục backup hay đổi cài đặt app từ xa.")))
 }

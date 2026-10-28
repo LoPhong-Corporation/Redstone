@@ -58,6 +58,8 @@ add_executable(MinecraftServerManager WIN32
     src/core/Event.hpp
     src/core/EventDispatcher.hpp
     src/core/EventDispatcher.cpp
+    src/core/Localize.hpp
+    src/core/Localize.cpp
     src/core/Logger.hpp
     src/core/Logger.cpp
     src/core/Json.hpp
@@ -127,6 +129,16 @@ add_executable(MinecraftServerManager WIN32
     src/ui/InstalledAddonsDialog.cpp
     src/ui/AdvancedSettingsDialog.hpp
     src/ui/AdvancedSettingsDialog.cpp
+    src/archive/ZipArchive.hpp
+    src/archive/ZipArchive.cpp
+    src/net/ModpackInstaller.hpp
+    src/net/ModpackInstaller.cpp
+    src/ui/I18n.hpp
+    src/ui/I18n.cpp
+    src/ui/AddonCompat.hpp
+    src/ui/AddonCompat.cpp
+    src/ui/OpenSshHelper.hpp
+    src/ui/OpenSshHelper.cpp
     src/remote/RemoteControlServer.hpp
     src/remote/RemoteControlServer.cpp
     src/ui/AppSettings.hpp

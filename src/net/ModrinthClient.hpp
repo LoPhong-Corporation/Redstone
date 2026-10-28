@@ -78,8 +78,53 @@ struct ModrinthVersion
     QStringList loaders;
     QList<ModrinthFile> files;
     QList<ModrinthDependency> dependencies;
+    QString changelog;       // markdown, only when requested
+    qint64 downloads = 0;
 
     [[nodiscard]] std::optional<ModrinthFile> PrimaryFile() const;
+};
+
+struct ModrinthGalleryImage
+{
+    QString url;
+    QString title;
+    QString description;
+    bool featured = false;
+};
+
+// Full project page data (GET /project/{id}).
+struct ModrinthProjectDetail
+{
+    QString id;
+    QString slug;
+    QString title;
+    QString description; // one-line summary
+    QString body;        // long markdown description
+    QString projectType;
+    QString iconUrl;
+    QString licenseName;
+    QString sourceUrl;
+    QString issuesUrl;
+    QString wikiUrl;
+    QString discordUrl;
+    QStringList donationNames;
+    QStringList donationUrls;
+    QString published;
+    QString updated;
+    QStringList gameVersions;
+    QStringList loaders;
+    QStringList categories;
+    QString clientSide;
+    QString serverSide;
+    qint64 downloads = 0;
+    qint64 followers = 0;
+    QList<ModrinthGalleryImage> gallery;
+};
+
+struct ModrinthMember
+{
+    QString name;
+    QString role;
 };
 
 struct SearchOptions
@@ -120,8 +165,34 @@ public:
         const QStringList& loaders,
         std::function<void(std::optional<ModrinthVersion> version, QString error)> onResult);
 
+    // Long description, links, license, gallery...
+    void GetProject(const QString& idOrSlug, std::function<void(std::optional<ModrinthProjectDetail> project, QString error)> onResult);
+    void GetMembers(const QString& projectId, std::function<void(QList<ModrinthMember> members)> onResult);
+
+    // Compatible versions (newest first) with changelogs, for the version list.
+    void ListVersions(
+        const QString& projectId,
+        const QString& gameVersion,
+        const QStringList& loaders,
+        std::function<void(QList<ModrinthVersion> versions, QString error)> onResult);
+
     void GetVersionById(
         const QString& versionId, std::function<void(std::optional<ModrinthVersion> version, QString error)> onResult);
+
+    // Identifies installed files by SHA-512: hash -> the exact Modrinth version it belongs to.
+    // Files unknown to Modrinth are simply absent from the map.
+    void IdentifyByHash(const QStringList& sha512Hashes, std::function<void(QHash<QString, ModrinthVersion> versions, QString error)> onResult);
+
+    // For each hash: the newest version of the same project compatible with the given
+    // game versions/loaders (may be the installed version itself).
+    void LatestByHash(
+        const QStringList& sha512Hashes,
+        const QStringList& loaders,
+        const QStringList& gameVersions,
+        std::function<void(QHash<QString, ModrinthVersion> versions, QString error)> onResult);
+
+    // project id -> title for up to 100 ids.
+    void GetProjectTitles(const QStringList& projectIds, std::function<void(QHash<QString, QString> titles)> onResult);
 
     // Project title lookup (for showing dependency names).
     void GetProjectTitle(const QString& projectId, std::function<void(QString title)> onResult);
@@ -133,20 +204,29 @@ public:
         const ModrinthFile& file,
         const QString& destinationFilePath,
         std::function<void(qint64 received, qint64 total)> onProgress,
-        std::function<void(bool success, QString error)> onFinished);
+        std::function<void(bool success, QString error)> onFinished,
+        bool allowModpackHosts = false);
 
     // Small cached icon fetch (only modrinth CDN hosts). Empty data = failure.
     void FetchIcon(const QString& url, std::function<void(QByteArray data)> onResult);
+    // Same, for larger images such as gallery screenshots.
+    void FetchImage(const QString& url, qint64 maxBytes, std::function<void(QByteArray data)> onResult);
 
     // True if `url` is https and its host is modrinth.com or a subdomain.
     [[nodiscard]] static bool IsTrustedUrl(const QString& url);
+    // https URL on one of the hosts the .mrpack specification allows
+    // (cdn.modrinth.com, github.com, raw.githubusercontent.com, gitlab.com).
+    [[nodiscard]] static bool IsModpackUrl(const QString& url);
     // Strips directories and rejects empty/dot names; returns "" if unsafe.
     [[nodiscard]] static QString SafeFileName(const QString& name);
 
 private:
     QNetworkReply* Get(const QUrl& url);
+    QNetworkReply* PostJson(const QUrl& url, const QByteArray& body);
+public:
     static std::optional<ModrinthVersion> ParseVersion(const QJsonObject& o);
 
+private:
     QNetworkAccessManager* manager_;
     QHash<QString, QByteArray> iconCache_;
 };

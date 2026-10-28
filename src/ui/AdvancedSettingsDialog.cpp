@@ -1,4 +1,5 @@
 #include "ui/AdvancedSettingsDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "platform/FirewallManager.hpp"
 
@@ -31,7 +32,7 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     , serverManager_(std::move(serverManager))
     , configManager_(std::move(configManager))
 {
-    setWindowTitle(QStringLiteral("Cài đặt nâng cao — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
+    setWindowTitle(TR("Cài đặt nâng cao — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
     resize(520, 480);
 
     auto* layout = new QVBoxLayout(this);
@@ -41,8 +42,8 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     auto* tunnelForm = new QFormLayout(tunnelGroup);
 
     comboPreset_ = new QComboBox(tunnelGroup);
-    comboPreset_->addItems({QStringLiteral("Tuỳ chỉnh"), QStringLiteral("Playit.gg"), QStringLiteral("Cloudflare Tunnel")});
-    tunnelForm->addRow(QStringLiteral("Loại:"), comboPreset_);
+    comboPreset_->addItems({TR("Tuỳ chỉnh"), QStringLiteral("Playit.gg"), QStringLiteral("Cloudflare Tunnel")});
+    tunnelForm->addRow(TR("Loại:"), comboPreset_);
 
     labelPresetHint_ = new QLabel(tunnelGroup);
     labelPresetHint_->setObjectName(QStringLiteral("hintLabel"));
@@ -59,22 +60,22 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     browseButton->setObjectName(QStringLiteral("btnNeutral"));
     browseButton->setFixedWidth(36);
     execLayout->addWidget(browseButton);
-    tunnelForm->addRow(QStringLiteral("File thực thi:"), execRow);
+    tunnelForm->addRow(TR("File thực thi:"), execRow);
     connect(browseButton, &QPushButton::clicked, this, &AdvancedSettingsDialog::OnBrowseTunnelExecutable);
 
     editTunnelArguments_ = new QLineEdit(tunnelGroup);
-    tunnelForm->addRow(QStringLiteral("Tham số dòng lệnh:"), editTunnelArguments_);
+    tunnelForm->addRow(TR("Tham số dòng lệnh:"), editTunnelArguments_);
 
-    checkTunnelEnabled_ = new QCheckBox(QStringLiteral("Bật tunnel cho server này"), tunnelGroup);
+    checkTunnelEnabled_ = new QCheckBox(TR("Bật tunnel cho server này"), tunnelGroup);
     tunnelForm->addRow(QString(), checkTunnelEnabled_);
 
-    checkTunnelAutoStart_ = new QCheckBox(QStringLiteral("Tự khởi động tunnel cùng lúc Start server"), tunnelGroup);
+    checkTunnelAutoStart_ = new QCheckBox(TR("Tự khởi động tunnel cùng lúc Start server"), tunnelGroup);
     tunnelForm->addRow(QString(), checkTunnelAutoStart_);
 
     auto* tunnelButtonRow = new QWidget(tunnelGroup);
     auto* tunnelButtonLayout = new QHBoxLayout(tunnelButtonRow);
     tunnelButtonLayout->setContentsMargins(0, 0, 0, 0);
-    buttonStartTunnel_ = new QPushButton(QStringLiteral("▶ Start tunnel ngay"), tunnelButtonRow);
+    buttonStartTunnel_ = new QPushButton(TR("▶ Start tunnel ngay"), tunnelButtonRow);
     buttonStartTunnel_->setObjectName(QStringLiteral("btnStart"));
     buttonStopTunnel_ = new QPushButton(QStringLiteral("■ Stop tunnel"), tunnelButtonRow);
     buttonStopTunnel_->setObjectName(QStringLiteral("btnStop"));
@@ -91,19 +92,19 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     layout->addWidget(tunnelGroup);
 
     // --- Scheduled restart group --------------------------------------
-    auto* restartGroup = new QGroupBox(QStringLiteral("Tự động Restart định kỳ"), this);
+    auto* restartGroup = new QGroupBox(TR("Tự động Restart định kỳ"), this);
     auto* restartForm = new QFormLayout(restartGroup);
 
-    checkScheduledRestartEnabled_ = new QCheckBox(QStringLiteral("Bật restart định kỳ"), restartGroup);
+    checkScheduledRestartEnabled_ = new QCheckBox(TR("Bật restart định kỳ"), restartGroup);
     restartForm->addRow(QString(), checkScheduledRestartEnabled_);
 
     spinRestartIntervalHours_ = new QSpinBox(restartGroup);
     spinRestartIntervalHours_->setRange(1, 168);
-    spinRestartIntervalHours_->setSuffix(QStringLiteral(" giờ"));
-    restartForm->addRow(QStringLiteral("Chu kỳ:"), spinRestartIntervalHours_);
+    spinRestartIntervalHours_->setSuffix(TR(" giờ"));
+    restartForm->addRow(TR("Chu kỳ:"), spinRestartIntervalHours_);
 
     auto* restartHint = new QLabel(
-        QStringLiteral("Sẽ gửi \"say [Manager] Server sẽ tự khởi động lại sau 60 giây.\" vào chat 60 giây trước khi restart."),
+        TR("Sẽ gửi \"say [Manager] Server sẽ tự khởi động lại sau 60 giây.\" vào chat 60 giây trước khi restart."),
         restartGroup);
     restartHint->setObjectName(QStringLiteral("hintLabel"));
     restartHint->setWordWrap(true);
@@ -112,14 +113,14 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     layout->addWidget(restartGroup);
 
     // --- Startup group ------------------------------------------------
-    auto* startupGroup = new QGroupBox(QStringLiteral("Khởi động"), this);
+    auto* startupGroup = new QGroupBox(TR("Khởi động"), this);
     auto* startupForm = new QFormLayout(startupGroup);
 
-    checkAutoStartWithApp_ = new QCheckBox(QStringLiteral("Tự động Start server này khi mở app"), startupGroup);
+    checkAutoStartWithApp_ = new QCheckBox(TR("Tự động Start server này khi mở app"), startupGroup);
     startupForm->addRow(QString(), checkAutoStartWithApp_);
 
     auto* startupHint = new QLabel(
-        QStringLiteral("Kết hợp với \"Khởi động cùng Windows\" (🚀 Cài đặt ứng dụng ở toolbar chính) để server này "
+        TR("Kết hợp với \"Khởi động cùng Windows\" (🚀 Cài đặt ứng dụng ở toolbar chính) để server này "
                         "tự chạy ngay khi bật máy, không cần mở tay."),
         startupGroup);
     startupHint->setObjectName(QStringLiteral("hintLabel"));
@@ -133,7 +134,7 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     auto* firewallLayout = new QVBoxLayout(firewallGroup);
 
     auto* firewallHint = new QLabel(
-        QStringLiteral("Mở port TCP %1 trên Windows Firewall để người khác kết nối được từ ngoài mạng LAN. "
+        TR("Mở port TCP %1 trên Windows Firewall để người khác kết nối được từ ngoài mạng LAN. "
                         "Cần app đang chạy với quyền Administrator, nếu không sẽ báo lỗi.")
             .arg(server_->GetConfig().port),
         firewallGroup);
@@ -141,7 +142,7 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     firewallHint->setWordWrap(true);
     firewallLayout->addWidget(firewallHint);
 
-    buttonOpenFirewallPort_ = new QPushButton(QStringLiteral("🔓 Mở port trên Firewall"), firewallGroup);
+    buttonOpenFirewallPort_ = new QPushButton(TR("🔓 Mở port trên Firewall"), firewallGroup);
     buttonOpenFirewallPort_->setObjectName(QStringLiteral("btnRestart"));
     firewallLayout->addWidget(buttonOpenFirewallPort_);
     connect(buttonOpenFirewallPort_, &QPushButton::clicked, this, &AdvancedSettingsDialog::OnOpenFirewallPortClicked);
@@ -158,9 +159,9 @@ AdvancedSettingsDialog::AdvancedSettingsDialog(
     layout->addWidget(labelSaveStatus_);
 
     auto* buttons = new QDialogButtonBox(this);
-    auto* saveButton = buttons->addButton(QStringLiteral("Lưu"), QDialogButtonBox::AcceptRole);
+    auto* saveButton = buttons->addButton(TR("Lưu"), QDialogButtonBox::AcceptRole);
     saveButton->setObjectName(QStringLiteral("btnStart"));
-    auto* closeButton = buttons->addButton(QStringLiteral("Đóng"), QDialogButtonBox::RejectRole);
+    auto* closeButton = buttons->addButton(TR("Đóng"), QDialogButtonBox::RejectRole);
     closeButton->setObjectName(QStringLiteral("btnNeutral"));
     connect(saveButton, &QPushButton::clicked, this, &AdvancedSettingsDialog::OnSaveClicked);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::reject);
@@ -197,16 +198,16 @@ void AdvancedSettingsDialog::OnPresetChanged()
     {
         case 1: // Playit.gg
             labelPresetHint_->setText(
-                QStringLiteral("Tải playit.exe từ playit.gg, chọn file đó ở dưới. Không cần tham số. "
+                TR("Tải playit.exe từ playit.gg, chọn file đó ở dưới. Không cần tham số. "
                                 "Lần đầu chạy sẽ in ra link để liên kết tài khoản trong console."));
             break;
         case 2: // Cloudflare Tunnel
             labelPresetHint_->setText(
-                QStringLiteral("Cần đã tạo Tunnel + route DNS trên Cloudflare Dashboard trước. "
+                TR("Cần đã tạo Tunnel + route DNS trên Cloudflare Dashboard trước. "
                                 "Tham số ví dụ: tunnel run <tên-tunnel-của-bạn>"));
             break;
         default:
-            labelPresetHint_->setText(QStringLiteral("Chọn 1 file thực thi bất kỳ và tham số dòng lệnh tương ứng."));
+            labelPresetHint_->setText(TR("Chọn 1 file thực thi bất kỳ và tham số dòng lệnh tương ứng."));
             break;
     }
 }
@@ -214,7 +215,7 @@ void AdvancedSettingsDialog::OnPresetChanged()
 void AdvancedSettingsDialog::OnBrowseTunnelExecutable()
 {
     const QString chosen = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn file thực thi tunnel"), QString(), QStringLiteral("Executable (*.exe)"));
+        this, TR("Chọn file thực thi tunnel"), QString(), QStringLiteral("Executable (*.exe)"));
     if (!chosen.isEmpty())
     {
         editTunnelExecutable_->setText(chosen);
@@ -224,8 +225,8 @@ void AdvancedSettingsDialog::OnBrowseTunnelExecutable()
 void AdvancedSettingsDialog::RefreshTunnelStatus()
 {
     labelTunnelStatus_->setText(server_->IsTunnelRunning()
-        ? QStringLiteral("Trạng thái: đang chạy")
-        : QStringLiteral("Trạng thái: đã dừng"));
+        ? TR("Trạng thái: đang chạy")
+        : TR("Trạng thái: đã dừng"));
 }
 
 void AdvancedSettingsDialog::SetTunnelButtonsEnabled(bool enabled)
@@ -244,7 +245,7 @@ void AdvancedSettingsDialog::OnStartTunnelClicked()
     ApplyFieldsToConfig();
 
     SetTunnelButtonsEnabled(false);
-    labelTunnelStatus_->setText(QStringLiteral("Đang khởi động..."));
+    labelTunnelStatus_->setText(TR("Đang khởi động..."));
 
     auto srv = server_;
     tunnelStartThread_ = std::jthread([this, srv](std::stop_token) {
@@ -261,7 +262,7 @@ void AdvancedSettingsDialog::OnStartTunnelClicked()
                 {
                     labelTunnelStatus_->setText(
                         labelTunnelStatus_->text() +
-                        QStringLiteral("  (không khởi động được - xem lý do cụ thể ở tab Console của server này)"));
+                        TR("  (không khởi động được - xem lý do cụ thể ở tab Console của server này)"));
                 }
             },
             Qt::QueuedConnection);
@@ -271,7 +272,7 @@ void AdvancedSettingsDialog::OnStartTunnelClicked()
 void AdvancedSettingsDialog::OnStopTunnelClicked()
 {
     SetTunnelButtonsEnabled(false);
-    labelTunnelStatus_->setText(QStringLiteral("Đang dừng..."));
+    labelTunnelStatus_->setText(TR("Đang dừng..."));
 
     auto srv = server_;
     tunnelStopThread_ = std::jthread([this, srv](std::stop_token) {
@@ -289,7 +290,7 @@ void AdvancedSettingsDialog::OnStopTunnelClicked()
 void AdvancedSettingsDialog::OnOpenFirewallPortClicked()
 {
     buttonOpenFirewallPort_->setEnabled(false);
-    labelFirewallStatus_->setText(QStringLiteral("Đang thêm rule..."));
+    labelFirewallStatus_->setText(TR("Đang thêm rule..."));
 
     const std::wstring ruleName = L"MinecraftServerManager - " + server_->GetConfig().name;
     const std::uint16_t port = server_->GetConfig().port;
@@ -301,8 +302,8 @@ void AdvancedSettingsDialog::OnOpenFirewallPortClicked()
             [this, ok, port]() {
                 buttonOpenFirewallPort_->setEnabled(true);
                 labelFirewallStatus_->setText(ok
-                    ? QStringLiteral("Đã mở port %1. Kiểm tra thêm ở router nếu chơi ngoài mạng LAN (port forwarding).").arg(port)
-                    : QStringLiteral("Thất bại - hãy chạy app này với quyền Administrator rồi thử lại."));
+                    ? TR("Đã mở port %1. Kiểm tra thêm ở router nếu chơi ngoài mạng LAN (port forwarding).").arg(port)
+                    : TR("Thất bại - hãy chạy app này với quyền Administrator rồi thử lại."));
             },
             Qt::QueuedConnection);
     });
@@ -326,7 +327,7 @@ void AdvancedSettingsDialog::ApplyFieldsToConfig()
 void AdvancedSettingsDialog::OnSaveClicked()
 {
     ApplyFieldsToConfig();
-    labelSaveStatus_->setText(QStringLiteral("Đã lưu."));
+    labelSaveStatus_->setText(TR("Đã lưu."));
 }
 
 } // namespace ui

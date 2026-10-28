@@ -1,0 +1,12 @@
+{
+ "_name": "Tiếng Việt",
+ "[manager] Auto-restart limit reached (5 within 10 minutes). Giving up.": "[manager] Đã đạt giới hạn tự khởi động lại (5 lần trong 10 phút). Dừng hẳn.",
+ "[manager] Auto-restart scheduled...": "[manager] Đã lên lịch tự khởi động lại...",
+ "[manager] Graceful stop timed out, killing process...": "[manager] Hết thời gian chờ dừng an toàn, đang buộc tắt tiến trình...",
+ "[manager] Restarting server...": "[manager] Đang khởi động lại server...",
+ "[manager] Server process exited unexpectedly (exit code {}).": "[manager] Tiến trình server thoát bất ngờ (mã thoát {}).",
+ "[manager] Server process stopped.": "[manager] Tiến trình server đã dừng.",
+ "[manager] Starting server process...": "[manager] Đang khởi động tiến trình server...",
+ "[manager] Tunnel process started.": "[manager] Tunnel đã chạy.",
+ "[manager] Tunnel process stopped.": "[manager] Tunnel đã dừng."
+}

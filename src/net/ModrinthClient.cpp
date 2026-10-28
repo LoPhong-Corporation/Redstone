@@ -1,4 +1,5 @@
 #include "net/ModrinthClient.hpp"
+#include "ui/I18n.hpp"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -67,6 +68,15 @@ bool ModrinthClient::IsTrustedUrl(const QString& url)
     const QString host = u.host().toLower();
     return u.scheme() == QLatin1String("https") &&
         (host == QLatin1String("modrinth.com") || host.endsWith(QLatin1String(".modrinth.com")));
+}
+
+bool ModrinthClient::IsModpackUrl(const QString& url)
+{
+    const QUrl u(url);
+    const QString host = u.host().toLower();
+    static const QStringList allowed = {
+        QStringLiteral("cdn.modrinth.com"), QStringLiteral("github.com"), QStringLiteral("raw.githubusercontent.com"), QStringLiteral("gitlab.com")};
+    return u.scheme() == QLatin1String("https") && allowed.contains(host);
 }
 
 QString ModrinthClient::SafeFileName(const QString& name)
@@ -145,7 +155,7 @@ void ModrinthClient::Search(const SearchOptions& o, std::function<void(SearchRes
         const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (!doc.isObject())
         {
-            onResult({}, QStringLiteral("Phản hồi không hợp lệ từ Modrinth."));
+            onResult({}, TR("Phản hồi không hợp lệ từ Modrinth."));
             return;
         }
         const QJsonObject root = doc.object();
@@ -189,6 +199,8 @@ std::optional<ModrinthVersion> ModrinthClient::ParseVersion(const QJsonObject& o
     v.versionNumber = o.value(QStringLiteral("version_number")).toString();
     v.versionType = o.value(QStringLiteral("version_type")).toString();
     v.datePublished = o.value(QStringLiteral("date_published")).toString();
+    v.changelog = o.value(QStringLiteral("changelog")).toString();
+    v.downloads = static_cast<qint64>(o.value(QStringLiteral("downloads")).toDouble());
     v.gameVersions = ToStringList(o.value(QStringLiteral("game_versions")).toArray());
     v.loaders = ToStringList(o.value(QStringLiteral("loaders")).toArray());
     for (const auto& fv : o.value(QStringLiteral("files")).toArray())
@@ -248,7 +260,7 @@ void ModrinthClient::GetCompatibleVersion(
         const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         if (!doc.isArray() || doc.array().isEmpty())
         {
-            onResult(std::nullopt, QStringLiteral("Không có phiên bản nào tương thích với server này."));
+            onResult(std::nullopt, TR("Không có phiên bản nào tương thích với server này."));
             return;
         }
         // Newest-first from the API. Take the newest stable release if any,
@@ -278,7 +290,7 @@ void ModrinthClient::GetCompatibleVersion(
         }
         if (!best.has_value())
         {
-            onResult(std::nullopt, QStringLiteral("Phiên bản tìm được không có file để tải."));
+            onResult(std::nullopt, TR("Phiên bản tìm được không có file để tải."));
             return;
         }
         onResult(best, QString());
@@ -300,10 +312,237 @@ void ModrinthClient::GetVersionById(
         auto parsed = doc.isObject() ? ParseVersion(doc.object()) : std::nullopt;
         if (!parsed.has_value())
         {
-            onResult(std::nullopt, QStringLiteral("Phản hồi phiên bản không hợp lệ."));
+            onResult(std::nullopt, TR("Phản hồi phiên bản không hợp lệ."));
             return;
         }
         onResult(parsed, QString());
+    });
+}
+
+QNetworkReply* ModrinthClient::PostJson(const QUrl& url, const QByteArray& body)
+{
+    QNetworkRequest request(url);
+    request.setRawHeader("User-Agent", kUserAgent);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    return manager_->post(request, body);
+}
+
+namespace
+{
+QHash<QString, ModrinthVersion> ParseHashMap(const QByteArray& data, const std::function<std::optional<ModrinthVersion>(const QJsonObject&)>& parse)
+{
+    QHash<QString, ModrinthVersion> map;
+    const QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (!doc.isObject())
+    {
+        return map;
+    }
+    const QJsonObject root = doc.object();
+    for (auto it = root.constBegin(); it != root.constEnd(); ++it)
+    {
+        if (auto v = parse(it.value().toObject()); v.has_value())
+        {
+            map.insert(it.key().toLower(), *v);
+        }
+    }
+    return map;
+}
+} // namespace
+
+void ModrinthClient::IdentifyByHash(
+    const QStringList& hashes, std::function<void(QHash<QString, ModrinthVersion> versions, QString error)> onResult)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("hashes"), QJsonArray::fromStringList(hashes));
+    body.insert(QStringLiteral("algorithm"), QStringLiteral("sha512"));
+    QNetworkReply* reply = PostJson(QUrl(QStringLiteral("%1/version_files").arg(QLatin1String(kApi))), QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError)
+        {
+            onResult({}, reply->errorString());
+            return;
+        }
+        onResult(ParseHashMap(reply->readAll(), &ModrinthClient::ParseVersion), QString());
+    });
+}
+
+void ModrinthClient::LatestByHash(
+    const QStringList& hashes,
+    const QStringList& loaders,
+    const QStringList& gameVersions,
+    std::function<void(QHash<QString, ModrinthVersion> versions, QString error)> onResult)
+{
+    QJsonObject body;
+    body.insert(QStringLiteral("hashes"), QJsonArray::fromStringList(hashes));
+    body.insert(QStringLiteral("algorithm"), QStringLiteral("sha512"));
+    body.insert(QStringLiteral("loaders"), QJsonArray::fromStringList(loaders));
+    body.insert(QStringLiteral("game_versions"), QJsonArray::fromStringList(gameVersions));
+    QNetworkReply* reply =
+        PostJson(QUrl(QStringLiteral("%1/version_files/update").arg(QLatin1String(kApi))), QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError)
+        {
+            onResult({}, reply->errorString());
+            return;
+        }
+        onResult(ParseHashMap(reply->readAll(), &ModrinthClient::ParseVersion), QString());
+    });
+}
+
+void ModrinthClient::GetProjectTitles(const QStringList& projectIds, std::function<void(QHash<QString, QString> titles)> onResult)
+{
+    if (projectIds.isEmpty())
+    {
+        onResult({});
+        return;
+    }
+    QUrl url(QStringLiteral("%1/projects").arg(QLatin1String(kApi)));
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("ids"), JsonStringArray(projectIds));
+    url.setQuery(q);
+    QNetworkReply* reply = Get(url);
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        QHash<QString, QString> titles;
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+            for (const auto& v : doc.array())
+            {
+                const QJsonObject o = v.toObject();
+                titles.insert(o.value(QStringLiteral("id")).toString(), o.value(QStringLiteral("title")).toString());
+            }
+        }
+        onResult(titles);
+    });
+}
+
+void ModrinthClient::GetProject(
+    const QString& idOrSlug, std::function<void(std::optional<ModrinthProjectDetail> project, QString error)> onResult)
+{
+    QNetworkReply* reply = Get(QUrl(QStringLiteral("%1/project/%2").arg(QLatin1String(kApi), idOrSlug)));
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError)
+        {
+            onResult(std::nullopt, reply->errorString());
+            return;
+        }
+        const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
+        if (!doc.isObject())
+        {
+            onResult(std::nullopt, TR("Phản hồi dự án không hợp lệ."));
+            return;
+        }
+        const QJsonObject o = doc.object();
+        ModrinthProjectDetail p;
+        p.id = o.value(QStringLiteral("id")).toString();
+        p.slug = o.value(QStringLiteral("slug")).toString();
+        p.title = o.value(QStringLiteral("title")).toString();
+        p.description = o.value(QStringLiteral("description")).toString();
+        p.body = o.value(QStringLiteral("body")).toString();
+        p.projectType = o.value(QStringLiteral("project_type")).toString();
+        p.iconUrl = o.value(QStringLiteral("icon_url")).toString();
+        p.licenseName = o.value(QStringLiteral("license")).toObject().value(QStringLiteral("name")).toString();
+        if (p.licenseName.isEmpty())
+        {
+            p.licenseName = o.value(QStringLiteral("license")).toObject().value(QStringLiteral("id")).toString();
+        }
+        p.sourceUrl = o.value(QStringLiteral("source_url")).toString();
+        p.issuesUrl = o.value(QStringLiteral("issues_url")).toString();
+        p.wikiUrl = o.value(QStringLiteral("wiki_url")).toString();
+        p.discordUrl = o.value(QStringLiteral("discord_url")).toString();
+        for (const auto& d : o.value(QStringLiteral("donation_urls")).toArray())
+        {
+            const QJsonObject don = d.toObject();
+            p.donationNames << don.value(QStringLiteral("platform")).toString();
+            p.donationUrls << don.value(QStringLiteral("url")).toString();
+        }
+        p.published = o.value(QStringLiteral("published")).toString();
+        p.updated = o.value(QStringLiteral("updated")).toString();
+        p.gameVersions = ToStringList(o.value(QStringLiteral("game_versions")).toArray());
+        p.loaders = ToStringList(o.value(QStringLiteral("loaders")).toArray());
+        p.categories = ToStringList(o.value(QStringLiteral("categories")).toArray());
+        p.categories << ToStringList(o.value(QStringLiteral("additional_categories")).toArray());
+        p.clientSide = o.value(QStringLiteral("client_side")).toString();
+        p.serverSide = o.value(QStringLiteral("server_side")).toString();
+        p.downloads = static_cast<qint64>(o.value(QStringLiteral("downloads")).toDouble());
+        p.followers = static_cast<qint64>(o.value(QStringLiteral("followers")).toDouble());
+        for (const auto& g : o.value(QStringLiteral("gallery")).toArray())
+        {
+            const QJsonObject go = g.toObject();
+            ModrinthGalleryImage img;
+            img.url = go.value(QStringLiteral("url")).toString();
+            img.title = go.value(QStringLiteral("title")).toString();
+            img.description = go.value(QStringLiteral("description")).toString();
+            img.featured = go.value(QStringLiteral("featured")).toBool();
+            p.gallery.push_back(img);
+        }
+        onResult(p, QString());
+    });
+}
+
+void ModrinthClient::GetMembers(const QString& projectId, std::function<void(QList<ModrinthMember> members)> onResult)
+{
+    QNetworkReply* reply = Get(QUrl(QStringLiteral("%1/project/%2/members").arg(QLatin1String(kApi), projectId)));
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        QList<ModrinthMember> members;
+        if (reply->error() == QNetworkReply::NoError)
+        {
+            for (const auto& v : QJsonDocument::fromJson(reply->readAll()).array())
+            {
+                const QJsonObject o = v.toObject();
+                ModrinthMember m;
+                m.name = o.value(QStringLiteral("user")).toObject().value(QStringLiteral("username")).toString();
+                m.role = o.value(QStringLiteral("role")).toString();
+                if (!m.name.isEmpty())
+                {
+                    members.push_back(m);
+                }
+            }
+        }
+        onResult(members);
+    });
+}
+
+void ModrinthClient::ListVersions(
+    const QString& projectId,
+    const QString& gameVersion,
+    const QStringList& loaders,
+    std::function<void(QList<ModrinthVersion> versions, QString error)> onResult)
+{
+    QUrl url(QStringLiteral("%1/project/%2/version").arg(QLatin1String(kApi), projectId));
+    QUrlQuery q;
+    if (!gameVersion.isEmpty())
+    {
+        q.addQueryItem(QStringLiteral("game_versions"), JsonStringArray({gameVersion}));
+    }
+    if (!loaders.isEmpty())
+    {
+        q.addQueryItem(QStringLiteral("loaders"), JsonStringArray(loaders));
+    }
+    q.addQueryItem(QStringLiteral("include_changelog"), QStringLiteral("true"));
+    url.setQuery(q);
+    QNetworkReply* reply = Get(url);
+    connect(reply, &QNetworkReply::finished, this, [reply, onResult]() {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError)
+        {
+            onResult({}, reply->errorString());
+            return;
+        }
+        QList<ModrinthVersion> versions;
+        for (const auto& v : QJsonDocument::fromJson(reply->readAll()).array())
+        {
+            if (auto parsed = ParseVersion(v.toObject()); parsed.has_value())
+            {
+                versions.push_back(*parsed);
+            }
+        }
+        onResult(versions, QString());
     });
 }
 
@@ -327,6 +566,11 @@ void ModrinthClient::GetProjectTitle(const QString& projectId, std::function<voi
 
 void ModrinthClient::FetchIcon(const QString& url, std::function<void(QByteArray data)> onResult)
 {
+    FetchImage(url, 2 * 1024 * 1024, std::move(onResult));
+}
+
+void ModrinthClient::FetchImage(const QString& url, qint64 maxBytes, std::function<void(QByteArray data)> onResult)
+{
     if (url.isEmpty() || !IsTrustedUrl(url))
     {
         onResult({});
@@ -338,13 +582,13 @@ void ModrinthClient::FetchIcon(const QString& url, std::function<void(QByteArray
         return;
     }
     QNetworkReply* reply = Get(QUrl(url));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, url, onResult]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, url, maxBytes, onResult]() {
         reply->deleteLater();
         QByteArray data;
         if (reply->error() == QNetworkReply::NoError)
         {
             data = reply->readAll();
-            if (data.size() < 2 * 1024 * 1024) // ignore absurdly large "icons"
+            if (data.size() < maxBytes) // ignore absurdly large images
             {
                 iconCache_.insert(url, data);
             }
@@ -361,17 +605,18 @@ void ModrinthClient::DownloadFile(
     const ModrinthFile& file,
     const QString& destinationFilePath,
     std::function<void(qint64 received, qint64 total)> onProgress,
-    std::function<void(bool success, QString error)> onFinished)
+    std::function<void(bool success, QString error)> onFinished,
+    bool allowModpackHosts)
 {
-    if (!IsTrustedUrl(file.url))
+    if (!(allowModpackHosts ? IsModpackUrl(file.url) : IsTrustedUrl(file.url)))
     {
-        onFinished(false, QStringLiteral("Từ chối tải: URL không thuộc modrinth.com (%1).").arg(file.url));
+        onFinished(false, TR("Từ chối tải: URL không nằm trong danh sách host được phép (%1).").arg(file.url));
         return;
     }
     const QFileInfo info(destinationFilePath);
     if (!QDir().mkpath(info.absolutePath()))
     {
-        onFinished(false, QStringLiteral("Không tạo được thư mục: %1").arg(info.absolutePath()));
+        onFinished(false, TR("Không tạo được thư mục: %1").arg(info.absolutePath()));
         return;
     }
 
@@ -379,7 +624,7 @@ void ModrinthClient::DownloadFile(
     auto out = std::make_shared<QFile>(partPath);
     if (!out->open(QIODevice::WriteOnly | QIODevice::Truncate))
     {
-        onFinished(false, QStringLiteral("Không thể ghi file: %1").arg(partPath));
+        onFinished(false, TR("Không thể ghi file: %1").arg(partPath));
         return;
     }
     auto hash = std::make_shared<QCryptographicHash>(QCryptographicHash::Sha512);
@@ -425,18 +670,18 @@ void ModrinthClient::DownloadFile(
         }
         if (*writeError)
         {
-            fail(QStringLiteral("Ghi file thất bại (đầy ổ đĩa?)."));
+            fail(TR("Ghi file thất bại (đầy ổ đĩa?)."));
             return;
         }
         if (!file.sha512.isEmpty() && QString::fromLatin1(hash->result().toHex()).toLower() != file.sha512)
         {
-            fail(QStringLiteral("Sai mã SHA-512 — file tải về bị lỗi hoặc bị can thiệp, đã huỷ."));
+            fail(TR("Sai mã SHA-512 — file tải về bị lỗi hoặc bị can thiệp, đã huỷ."));
             return;
         }
         QFile::remove(destinationFilePath); // QFile::rename will not overwrite
         if (!QFile::rename(partPath, destinationFilePath))
         {
-            fail(QStringLiteral("Không đổi tên được file tải về thành %1").arg(destinationFilePath));
+            fail(TR("Không đổi tên được file tải về thành %1").arg(destinationFilePath));
             return;
         }
         onFinished(true, QString());

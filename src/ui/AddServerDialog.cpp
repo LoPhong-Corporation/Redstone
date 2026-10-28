@@ -1,4 +1,5 @@
 #include "ui/AddServerDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "javamanager/JavaManager.hpp"
 
@@ -47,17 +48,17 @@ QWidget* MakeBrowsableRow(QWidget* parent, QLineEdit* field, QPushButton*& outBr
 AddServerDialog::AddServerDialog(QWidget* parent)
     : QDialog(parent)
 {
-    setWindowTitle(QStringLiteral("Thêm Server Mới"));
+    setWindowTitle(TR("Thêm Server Mới"));
     setModal(true);
 
     auto* form = new QFormLayout();
 
     editName_ = new QLineEdit(this);
-    form->addRow(QStringLiteral("Tên server:"), editName_);
+    form->addRow(TR("Tên server:"), editName_);
 
     editDirectory_ = new QLineEdit(this);
     QPushButton* browseDirectoryButton = nullptr;
-    form->addRow(QStringLiteral("Thư mục server:"), MakeBrowsableRow(this, editDirectory_, browseDirectoryButton));
+    form->addRow(TR("Thư mục server:"), MakeBrowsableRow(this, editDirectory_, browseDirectoryButton));
     connect(browseDirectoryButton, &QPushButton::clicked, this, &AddServerDialog::OnBrowseDirectory);
 
     // Phase 5 Server Providers: download a runnable server jar directly
@@ -67,7 +68,7 @@ AddServerDialog::AddServerDialog(QWidget* parent)
     auto* providerRow = new QHBoxLayout();
     providerRow->setSpacing(6);
     comboProvider_ = new QComboBox(this);
-    comboProvider_->addItem(QStringLiteral("— Tự có file jar —"));
+    comboProvider_->addItem(TR("— Tự có file jar —"));
     comboProvider_->addItem(QStringLiteral("Vanilla"));
     comboProvider_->addItem(QStringLiteral("Paper"));
     comboProvider_->addItem(QStringLiteral("Fabric"));
@@ -81,15 +82,15 @@ AddServerDialog::AddServerDialog(QWidget* parent)
     auto* refreshVersionsButton = new QPushButton(QStringLiteral("⟳"), this);
     refreshVersionsButton->setObjectName(QStringLiteral("btnNeutral"));
     refreshVersionsButton->setFixedWidth(32);
-    refreshVersionsButton->setToolTip(QStringLiteral("Tải lại danh sách phiên bản"));
+    refreshVersionsButton->setToolTip(TR("Tải lại danh sách phiên bản"));
     providerRow->addWidget(refreshVersionsButton);
 
-    buttonDownloadJar_ = new QPushButton(QStringLiteral("⬇ Tải"), this);
+    buttonDownloadJar_ = new QPushButton(TR("⬇ Tải"), this);
     buttonDownloadJar_->setObjectName(QStringLiteral("btnSend"));
     buttonDownloadJar_->setEnabled(false);
     providerRow->addWidget(buttonDownloadJar_);
 
-    form->addRow(QStringLiteral("Tải server tự động:"), providerRow);
+    form->addRow(TR("Tải server tự động:"), providerRow);
 
     labelProviderStatus_ = new QLabel(this);
     labelProviderStatus_->setObjectName(QStringLiteral("hintLabel"));
@@ -103,19 +104,19 @@ AddServerDialog::AddServerDialog(QWidget* parent)
     editJar_ = new QLineEdit(this);
     editJar_->setText(QStringLiteral("server.jar"));
     QPushButton* browseJarButton = nullptr;
-    form->addRow(QStringLiteral("Tên file jar:"), MakeBrowsableRow(this, editJar_, browseJarButton));
+    form->addRow(TR("Tên file jar:"), MakeBrowsableRow(this, editJar_, browseJarButton));
     connect(browseJarButton, &QPushButton::clicked, this, &AddServerDialog::OnBrowseJar);
 
     editJavaPath_ = new QLineEdit(this);
     editJavaPath_->setText(QStringLiteral("java.exe"));
     QPushButton* browseJavaButton = nullptr;
-    form->addRow(QStringLiteral("Đường dẫn java.exe:"), MakeBrowsableRow(this, editJavaPath_, browseJavaButton));
+    form->addRow(TR("Đường dẫn java.exe:"), MakeBrowsableRow(this, editJavaPath_, browseJavaButton));
     connect(browseJavaButton, &QPushButton::clicked, this, &AddServerDialog::OnBrowseJavaPath);
 
     // Phase 3 Java Manager: offer a quick-pick of Java installs this app
     // could find on this machine, so most people never need Browse at all.
     comboDetectedJava_ = new QComboBox(this);
-    comboDetectedJava_->addItem(QStringLiteral("— Chọn Java đã phát hiện —"));
+    comboDetectedJava_->addItem(TR("— Chọn Java đã phát hiện —"));
     for (const auto& install : javamanager::DetectInstallations())
     {
         const QString path = QString::fromStdWString(install.path.wstring());
@@ -125,9 +126,9 @@ AddServerDialog::AddServerDialog(QWidget* parent)
     comboDetectedJava_->setEnabled(comboDetectedJava_->count() > 1);
     if (!comboDetectedJava_->isEnabled())
     {
-        comboDetectedJava_->setToolTip(QStringLiteral("Không tự phát hiện được Java nào - hãy dùng nút \"...\" ở trên."));
+        comboDetectedJava_->setToolTip(TR("Không tự phát hiện được Java nào - hãy dùng nút \"...\" ở trên."));
     }
-    form->addRow(QStringLiteral("Java đã cài (tự phát hiện):"), comboDetectedJava_);
+    form->addRow(TR("Java đã cài (tự phát hiện):"), comboDetectedJava_);
     connect(comboDetectedJava_, &QComboBox::currentIndexChanged, this, [this](int index) {
         if (index <= 0)
         {
@@ -148,12 +149,12 @@ AddServerDialog::AddServerDialog(QWidget* parent)
         QStringLiteral("Fabric"),
         QStringLiteral("Forge"),
         QStringLiteral("Bukkit"),
-        QStringLiteral("Khác"),
+        TR("Khác"),
     });
-    form->addRow(QStringLiteral("Loại server:"), comboServerType_);
+    form->addRow(TR("Loại server:"), comboServerType_);
 
     auto* tpsHint = new QLabel(
-        QStringLiteral("Chỉ Paper/Spigot/Purpur/Bukkit/Folia mới tự động hiện TPS (server tự trả lời lệnh /tps)."),
+        TR("Chỉ Paper/Spigot/Purpur/Bukkit/Folia mới tự động hiện TPS (server tự trả lời lệnh /tps)."),
         this);
     tpsHint->setObjectName(QStringLiteral("hintLabel"));
     tpsHint->setWordWrap(true);
@@ -162,12 +163,12 @@ AddServerDialog::AddServerDialog(QWidget* parent)
     editMinMemory_ = new QLineEdit(this);
     editMinMemory_->setText(QStringLiteral("1024"));
     editMinMemory_->setValidator(new QIntValidator(1, 1000000, this));
-    form->addRow(QStringLiteral("RAM tối thiểu (MB):"), editMinMemory_);
+    form->addRow(TR("RAM tối thiểu (MB):"), editMinMemory_);
 
     editMaxMemory_ = new QLineEdit(this);
     editMaxMemory_->setText(QStringLiteral("2048"));
     editMaxMemory_->setValidator(new QIntValidator(1, 1000000, this));
-    form->addRow(QStringLiteral("RAM tối đa (MB):"), editMaxMemory_);
+    form->addRow(TR("RAM tối đa (MB):"), editMaxMemory_);
 
     editPort_ = new QLineEdit(this);
     editPort_->setText(QStringLiteral("25565"));
@@ -204,7 +205,7 @@ AddServerDialog::~AddServerDialog()
 void AddServerDialog::OnBrowseDirectory()
 {
     const QString startDir = editDirectory_->text().isEmpty() ? QDir::homePath() : editDirectory_->text();
-    const QString chosen = QFileDialog::getExistingDirectory(this, QStringLiteral("Chọn thư mục server"), startDir);
+    const QString chosen = QFileDialog::getExistingDirectory(this, TR("Chọn thư mục server"), startDir);
     if (!chosen.isEmpty())
     {
         editDirectory_->setText(QDir::toNativeSeparators(chosen));
@@ -215,7 +216,7 @@ void AddServerDialog::OnBrowseJar()
 {
     const QString startDir = editDirectory_->text().isEmpty() ? QDir::homePath() : editDirectory_->text();
     const QString chosen = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn file server .jar"), startDir, QStringLiteral("Java Archive (*.jar)"));
+        this, TR("Chọn file server .jar"), startDir, QStringLiteral("Java Archive (*.jar)"));
     if (chosen.isEmpty())
     {
         return;
@@ -238,7 +239,7 @@ void AddServerDialog::OnBrowseJar()
 void AddServerDialog::OnBrowseJavaPath()
 {
     const QString chosen = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn java.exe"), QString(), QStringLiteral("java.exe;;Executable (*.exe)"));
+        this, TR("Chọn java.exe"), QString(), QStringLiteral("java.exe;;Executable (*.exe)"));
     if (!chosen.isEmpty())
     {
         editJavaPath_->setText(QDir::toNativeSeparators(chosen));
@@ -327,22 +328,22 @@ void AddServerDialog::LoadVersionsForCurrentProvider()
     const net::ServerProviderType type = CurrentProviderType();
     comboProviderVersion_->clear();
     buttonDownloadJar_->setEnabled(false);
-    labelProviderStatus_->setText(QStringLiteral("Đang tải danh sách phiên bản..."));
+    labelProviderStatus_->setText(TR("Đang tải danh sách phiên bản..."));
 
     providerClient_->ListVersions(type, [this](QStringList versions, QString error) {
         if (!error.isEmpty())
         {
-            labelProviderStatus_->setText(QStringLiteral("Lỗi: %1").arg(error));
+            labelProviderStatus_->setText(TR("Lỗi: %1").arg(error));
             return;
         }
         if (versions.isEmpty())
         {
-            labelProviderStatus_->setText(QStringLiteral("Không tìm thấy phiên bản nào."));
+            labelProviderStatus_->setText(TR("Không tìm thấy phiên bản nào."));
             return;
         }
         comboProviderVersion_->addItems(versions);
         buttonDownloadJar_->setEnabled(true);
-        labelProviderStatus_->setText(QStringLiteral("Chọn phiên bản rồi bấm \"⬇ Tải\"."));
+        labelProviderStatus_->setText(TR("Chọn phiên bản rồi bấm \"⬇ Tải\"."));
     });
 }
 
@@ -351,7 +352,7 @@ void AddServerDialog::OnDownloadJarClicked()
     const QString directory = editDirectory_->text().trimmed();
     if (directory.isEmpty())
     {
-        labelProviderStatus_->setText(QStringLiteral("Điền \"Thư mục server\" trước khi tải."));
+        labelProviderStatus_->setText(TR("Điền \"Thư mục server\" trước khi tải."));
         return;
     }
     const QString version = comboProviderVersion_->currentText();
@@ -364,12 +365,12 @@ void AddServerDialog::OnDownloadJarClicked()
     buttonDownloadJar_->setEnabled(false);
     comboProvider_->setEnabled(false);
     comboProviderVersion_->setEnabled(false);
-    labelProviderStatus_->setText(QStringLiteral("Đang lấy thông tin tải xuống..."));
+    labelProviderStatus_->setText(TR("Đang lấy thông tin tải xuống..."));
 
     providerClient_->ResolveServerJar(type, version, [this, directory](std::optional<net::ServerJarInfo> info, QString error) {
         if (!info.has_value())
         {
-            labelProviderStatus_->setText(QStringLiteral("Lỗi: %1").arg(error));
+            labelProviderStatus_->setText(TR("Lỗi: %1").arg(error));
             buttonDownloadJar_->setEnabled(true);
             comboProvider_->setEnabled(true);
             comboProviderVersion_->setEnabled(true);
@@ -377,7 +378,7 @@ void AddServerDialog::OnDownloadJarClicked()
         }
 
         const QString destinationPath = directory + QStringLiteral("/") + info->filename;
-        labelProviderStatus_->setText(QStringLiteral("Đang tải %1...").arg(info->filename));
+        labelProviderStatus_->setText(TR("Đang tải %1...").arg(info->filename));
 
         providerClient_->DownloadFile(info->downloadUrl, destinationPath, [this, info](bool success, QString downloadError) {
             buttonDownloadJar_->setEnabled(true);
@@ -386,11 +387,11 @@ void AddServerDialog::OnDownloadJarClicked()
 
             if (!success)
             {
-                labelProviderStatus_->setText(QStringLiteral("Lỗi tải file: %1").arg(downloadError));
+                labelProviderStatus_->setText(TR("Lỗi tải file: %1").arg(downloadError));
                 return;
             }
             editJar_->setText(info->filename);
-            labelProviderStatus_->setText(QStringLiteral("Đã tải %1 xong.").arg(info->filename));
+            labelProviderStatus_->setText(TR("Đã tải %1 xong.").arg(info->filename));
         });
     });
 }
@@ -404,7 +405,7 @@ void AddServerDialog::OnSaveClicked()
 
     if (name.isEmpty() || directory.isEmpty() || jar.isEmpty() || javaPath.isEmpty())
     {
-        labelError_->setText(QStringLiteral("Vui lòng điền đầy đủ Tên, Thư mục, Jar và đường dẫn Java."));
+        labelError_->setText(TR("Vui lòng điền đầy đủ Tên, Thư mục, Jar và đường dẫn Java."));
         return;
     }
 
@@ -417,17 +418,17 @@ void AddServerDialog::OnSaveClicked()
 
     if (!minOk || !maxOk)
     {
-        labelError_->setText(QStringLiteral("RAM tối thiểu/tối đa phải là số nguyên (MB)."));
+        labelError_->setText(TR("RAM tối thiểu/tối đa phải là số nguyên (MB)."));
         return;
     }
     if (!portOk || port == 0 || port > 65535)
     {
-        labelError_->setText(QStringLiteral("Port phải là số từ 1 đến 65535."));
+        labelError_->setText(TR("Port phải là số từ 1 đến 65535."));
         return;
     }
     if (minMemory > maxMemory)
     {
-        labelError_->setText(QStringLiteral("RAM tối thiểu không được lớn hơn RAM tối đa."));
+        labelError_->setText(TR("RAM tối thiểu không được lớn hơn RAM tối đa."));
         return;
     }
 

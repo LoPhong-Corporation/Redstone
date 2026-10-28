@@ -2,8 +2,10 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"net"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -120,5 +122,48 @@ func TestWrongTokenRejected(t *testing.T) {
 	defer stop()
 	if _, err := Dial(addr, "wrong-token-wrong-token", 2*time.Second); err == nil || !strings.Contains(err.Error(), "xác thực") {
 		t.Fatalf("expected auth failure, got %v", err)
+	}
+}
+
+func TestEnglishDictionaryPlaceholders(t *testing.T) {
+	ph := regexp.MustCompile(`%[-+# 0]*\d*(?:\.\d+)?[a-zA-Z]`)
+	for vi, en := range enDict {
+		if en == "" {
+			t.Errorf("empty translation for %q", vi)
+		}
+		a, b := ph.FindAllString(vi, -1), ph.FindAllString(en, -1)
+		if strings.Join(a, "|") != strings.Join(b, "|") {
+			t.Errorf("placeholder mismatch: %q -> %q", vi, en)
+		}
+	}
+}
+
+func TestTranslateSwitchesLanguage(t *testing.T) {
+	defer func(old string) { lang = old }(lang)
+	lang = "en"
+	if got := T("Cấp OP"); got != "Give OP" {
+		t.Fatalf("en: %q", got)
+	}
+	lang = "vi"
+	if got := T("Cấp OP"); got != "Cấp OP" {
+		t.Fatalf("vi: %q", got)
+	}
+	if detectLang("vi_VN.UTF-8") != "vi" || detectLang("en") != "en" || detectLang("fr") != "en" {
+		t.Fatal("detectLang")
+	}
+}
+
+func TestBannerShape(t *testing.T) {
+	var buf bytes.Buffer
+	old := useColor
+	useColor = false
+	defer func() { useColor = old }()
+	printBanner(&buf)
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) < len(bannerChars) {
+		t.Fatalf("banner has %d lines", len(lines))
+	}
+	if strings.Contains(buf.String(), "\x1b[") {
+		t.Fatal("colour codes leaked with colour off")
 	}
 }

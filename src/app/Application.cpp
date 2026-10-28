@@ -3,11 +3,15 @@
 #include "core/Logger.hpp"
 #include "ui/AppSettings.hpp"
 #include "ui/FluentTheme.hpp"
+#include "ui/I18n.hpp"
 
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFileInfo>
+#include <QGuiApplication>
 #include <QIcon>
+#include <QProcess>
 #include <QStyleFactory>
 
 #include <chrono>
@@ -23,6 +27,19 @@ namespace
 
 int Application::Run(int argc, char** argv)
 {
+    // Window scale + high-DPI handling must be decided BEFORE QApplication exists.
+    // PassThrough keeps fractional Windows scaling (125%/150%) crisp instead of
+    // rounding it to a whole number, which made text look blurry or too small.
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+    {
+        const QString exeDir = QFileInfo(QString::fromLocal8Bit(argv[0])).absolutePath();
+        const int uiScale = ui::AppSettings::PeekUiScalePercent(exeDir);
+        if (uiScale > 0 && qEnvironmentVariableIsEmpty("QT_SCALE_FACTOR"))
+        {
+            qputenv("QT_SCALE_FACTOR", QByteArray::number(uiScale / 100.0, 'f', 2));
+        }
+    }
+
     QApplication qtApp(argc, argv);
     QApplication::setApplicationName("Minecraft Server Manager");
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/redstone.png"))); // every dialog inherits it
@@ -40,6 +57,7 @@ int Application::Run(int argc, char** argv)
     // before anything touches those paths (first Logger::Instance() /
     // ConfigManager::Load() call).
     QDir::setCurrent(QCoreApplication::applicationDirPath());
+    i18n::SetLanguage(ui::CurrentSettings().language); // before any widget text is created
     // Keeps the app (and its running servers) alive with only the tray
     // icon left when the main window is closed/hidden - otherwise Qt
     // would quit the whole process as soon as the last visible window
@@ -89,6 +107,11 @@ int Application::Run(int argc, char** argv)
     // server is left running, no background thread can touch a MainWindow
     // that is about to be destroyed.
     ShutdownServers();
+
+    if (ui::RestartRequested().load())
+    {
+        QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1));
+    }
 
     return exitCode;
 }

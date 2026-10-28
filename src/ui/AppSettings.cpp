@@ -20,6 +20,13 @@ QString SettingsPath()
 }
 } // namespace
 
+int AppSettings::PeekUiScalePercent(const QString& executableDirectory)
+{
+    QSettings ini(QDir(executableDirectory).filePath(QStringLiteral("data/app_settings.ini")), QSettings::IniFormat);
+    const int v = ini.value(QStringLiteral("appearance/uiScale"), 0).toInt();
+    return v == 0 ? 0 : std::clamp(v, 100, 250);
+}
+
 AppSettings AppSettings::Load()
 {
     AppSettings s;
@@ -27,7 +34,11 @@ AppSettings AppSettings::Load()
 
     s.theme = static_cast<ThemeMode>(std::clamp(ini.value(QStringLiteral("appearance/theme"), 1).toInt(), 0, 2));
     s.accentIndex = std::max(0, ini.value(QStringLiteral("appearance/accent"), 0).toInt());
-    s.fontScalePercent = std::clamp(ini.value(QStringLiteral("appearance/fontScale"), 100).toInt(), 80, 150);
+    s.fontScalePercent = std::clamp(ini.value(QStringLiteral("appearance/fontScale"), 100).toInt(), 80, 200);
+    s.uiScalePercent = ini.value(QStringLiteral("appearance/uiScale"), 0).toInt();
+    if (s.uiScalePercent != 0) s.uiScalePercent = std::clamp(s.uiScalePercent, 100, 250);
+    s.language = ini.value(QStringLiteral("appearance/language"), QStringLiteral("auto")).toString();
+    s.windowGeometry = QByteArray::fromBase64(ini.value(QStringLiteral("window/geometry")).toByteArray());
 
     s.consoleFontFamily = ini.value(QStringLiteral("console/fontFamily"), s.consoleFontFamily).toString();
     s.consoleFontSize = std::clamp(ini.value(QStringLiteral("console/fontSize"), 10).toInt(), 7, 28);
@@ -53,6 +64,9 @@ void AppSettings::Save() const
     ini.setValue(QStringLiteral("appearance/theme"), static_cast<int>(theme));
     ini.setValue(QStringLiteral("appearance/accent"), accentIndex);
     ini.setValue(QStringLiteral("appearance/fontScale"), fontScalePercent);
+    ini.setValue(QStringLiteral("appearance/uiScale"), uiScalePercent);
+    ini.setValue(QStringLiteral("appearance/language"), language);
+    ini.setValue(QStringLiteral("window/geometry"), windowGeometry.toBase64());
 
     ini.setValue(QStringLiteral("console/fontFamily"), consoleFontFamily);
     ini.setValue(QStringLiteral("console/fontSize"), consoleFontSize);
@@ -69,6 +83,12 @@ void AppSettings::Save() const
     ini.setValue(QStringLiteral("remote/port"), remotePort);
     ini.setValue(QStringLiteral("remote/token"), remoteToken);
     ini.sync();
+}
+
+std::atomic<bool>& RestartRequested()
+{
+    static std::atomic<bool> flag{false};
+    return flag;
 }
 
 AppSettings& CurrentSettings()

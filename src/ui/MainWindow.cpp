@@ -1,4 +1,5 @@
 #include "ui/MainWindow.hpp"
+#include "ui/I18n.hpp"
 
 #include "ui/AddServerDialog.hpp"
 #include "ui/AdvancedSettingsDialog.hpp"
@@ -31,6 +32,9 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QAbstractButton>
+#include <QGuiApplication>
+#include <QScreen>
+#include <QShortcut>
 #include <QComboBox>
 #include <QRegularExpression>
 #include <QTimer>
@@ -130,7 +134,16 @@ MainWindow::MainWindow(
 {
     setWindowTitle(QStringLiteral("Redstone - Minecraft Server Manager"));
     setWindowIcon(QIcon(QStringLiteral(":/icons/redstone.png")));
-    resize(1120, 700);
+    // Size from the screen (not a fixed 1120x700 that is tiny on 4K and huge on small laptops),
+    // restoring the last position/size when there is one.
+    setMinimumSize(900, 600);
+    if (!restoreGeometry(CurrentSettings().windowGeometry))
+    {
+        const QRect avail = QGuiApplication::primaryScreen() != nullptr ? QGuiApplication::primaryScreen()->availableGeometry() : QRect(0, 0, 1366, 768);
+        const QSize size(std::min(static_cast<int>(avail.width() * 0.78), 1600), std::min(static_cast<int>(avail.height() * 0.82), 1000));
+        resize(size.expandedTo(minimumSize()));
+        move(avail.center() - QPoint(width() / 2, height() / 2));
+    }
 
     BuildToolbar();
     BuildTrayIcon();
@@ -167,12 +180,12 @@ MainWindow::MainWindow(
     emptyIcon->setPixmap(QIcon(QStringLiteral(":/icons/redstone.png")).pixmap(96, 96));
     emptyIcon->setAlignment(Qt::AlignCenter);
 
-    auto* emptyTitle = new QLabel(QStringLiteral("Chào mừng đến với Redstone"), emptyPage);
+    auto* emptyTitle = new QLabel(TR("Chào mừng đến với Redstone"), emptyPage);
     emptyTitle->setObjectName(QStringLiteral("titleLabel"));
     emptyTitle->setAlignment(Qt::AlignCenter);
 
     auto* emptySubtitle = new QLabel(
-        QStringLiteral("Bạn chưa có server nào. Tạo server đầu tiên để bắt đầu quản lý, xem console\n"
+        TR("Bạn chưa có server nào. Tạo server đầu tiên để bắt đầu quản lý, xem console\n"
                         "thời gian thực, và cài mod/plugin trực tiếp từ Modrinth."),
         emptyPage);
     emptySubtitle->setObjectName(QStringLiteral("hintLabel"));
@@ -180,7 +193,7 @@ MainWindow::MainWindow(
     emptySubtitle->setWordWrap(true);
     emptySubtitle->setMaximumWidth(460);
 
-    auto* emptyButton = new QPushButton(QStringLiteral("Tạo server đầu tiên"), emptyPage);
+    auto* emptyButton = new QPushButton(TR("Tạo server đầu tiên"), emptyPage);
     emptyButton->setObjectName(QStringLiteral("btnStart"));
     emptyButton->setMinimumSize(220, 42);
     RegisterIcon(emptyButton, glyph::Add, true);
@@ -217,9 +230,9 @@ MainWindow::MainWindow(
 
     auto* leftButtons = new QHBoxLayout();
     leftButtons->setSpacing(10);
-    buttonAdd_ = new QPushButton(QStringLiteral("Thêm"), serversCard);
+    buttonAdd_ = new QPushButton(TR("Thêm"), serversCard);
     buttonAdd_->setObjectName(QStringLiteral("btnStart"));
-    buttonRemove_ = new QPushButton(QStringLiteral("Xoá"), serversCard);
+    buttonRemove_ = new QPushButton(TR("Xoá"), serversCard);
     buttonRemove_->setObjectName(QStringLiteral("btnNeutral"));
     RegisterIcon(buttonAdd_, glyph::Add, true);
     RegisterIcon(buttonRemove_, glyph::Delete, false);
@@ -241,7 +254,7 @@ MainWindow::MainWindow(
     consoleLayout->setSpacing(12);
 
     auto* statusRow = new QHBoxLayout();
-    labelStatus_ = new QLabel(QStringLiteral("Chưa chọn server"), consoleCard);
+    labelStatus_ = new QLabel(TR("Chưa chọn server"), consoleCard);
     labelStatus_->setObjectName(QStringLiteral("statusLabel"));
     labelStats_ = new QLabel(QStringLiteral(""), consoleCard);
     labelStats_->setObjectName(QStringLiteral("statsLabel"));
@@ -254,14 +267,14 @@ MainWindow::MainWindow(
     auto* filterRow = new QHBoxLayout();
     filterRow->setSpacing(8);
     editFilter_ = new QLineEdit(consoleCard);
-    editFilter_->setPlaceholderText(QStringLiteral("Lọc console... (gõ chữ cần tìm, không phân biệt hoa/thường)"));
+    editFilter_->setPlaceholderText(TR("Lọc console... (gõ chữ cần tìm, không phân biệt hoa/thường)"));
     editFilter_->setClearButtonEnabled(true);
     comboFilterKind_ = new QComboBox(consoleCard);
-    comboFilterKind_->addItem(QStringLiteral("Tất cả"));
-    comboFilterKind_->addItem(QStringLiteral("Cảnh báo + lỗi"));
-    comboFilterKind_->addItem(QStringLiteral("Chỉ lỗi"));
-    comboFilterKind_->addItem(QStringLiteral("Chat & người chơi"));
-    comboFilterKind_->addItem(QStringLiteral("Lệnh & manager"));
+    comboFilterKind_->addItem(TR("Tất cả"));
+    comboFilterKind_->addItem(TR("Cảnh báo + lỗi"));
+    comboFilterKind_->addItem(TR("Chỉ lỗi"));
+    comboFilterKind_->addItem(TR("Chat & người chơi"));
+    comboFilterKind_->addItem(TR("Lệnh & manager"));
     labelFilterCount_ = new QLabel(consoleCard);
     labelFilterCount_->setObjectName(QStringLiteral("hintLabel"));
     filterRow->addWidget(editFilter_, 1);
@@ -291,8 +304,8 @@ MainWindow::MainWindow(
     auto* commandLayout = new QHBoxLayout();
     commandLayout->setSpacing(10);
     editCommand_ = new QLineEdit(controlsCard);
-    editCommand_->setPlaceholderText(QStringLiteral("Nhập lệnh console (vd: say hello, op Steve...)"));
-    buttonSend_ = new QPushButton(QStringLiteral("Gửi"), controlsCard);
+    editCommand_->setPlaceholderText(TR("Nhập lệnh console (vd: say hello, op Steve...)"));
+    buttonSend_ = new QPushButton(TR("Gửi"), controlsCard);
     RegisterIcon(buttonSend_, glyph::Send, true);
     buttonSend_->setObjectName(QStringLiteral("btnSend"));
     commandLayout->addWidget(editCommand_, 1);
@@ -300,6 +313,7 @@ MainWindow::MainWindow(
     controlsLayout->addLayout(commandLayout);
 
     auto* actionLayout = new QHBoxLayout();
+    actionLayout_ = actionLayout;
     actionLayout->setSpacing(10);
     buttonStart_ = new QPushButton(QStringLiteral("Start"), controlsCard);
     buttonStart_->setObjectName(QStringLiteral("btnStart"));
@@ -349,8 +363,77 @@ MainWindow::MainWindow(
     ApplyThemedIcons();
     RefreshServerList();
 
+    // Zoom the whole UI like a browser: Ctrl + / Ctrl - / Ctrl 0.
+    auto addZoomShortcut = [this](const QKeySequence& keys, int direction) {
+        auto* shortcut = new QShortcut(keys, this);
+        shortcut->setContext(Qt::ApplicationShortcut);
+        connect(shortcut, &QShortcut::activated, this, [this, direction]() { ChangeZoom(direction); });
+    };
+    addZoomShortcut(QKeySequence(QKeySequence::ZoomIn), +1);
+    addZoomShortcut(QKeySequence(Qt::CTRL | Qt::Key_Equal), +1);
+    addZoomShortcut(QKeySequence(QKeySequence::ZoomOut), -1);
+    addZoomShortcut(QKeySequence(Qt::CTRL | Qt::Key_0), 0);
+
     remote_ = new remote::RemoteControlServer(serverManager_, events_, this);
     ApplyRemoteSettings(false);
+}
+
+void MainWindow::ChangeZoom(int direction)
+{
+    static const int steps[] = {80, 90, 100, 110, 125, 150, 175, 200};
+    constexpr int count = static_cast<int>(sizeof(steps) / sizeof(steps[0]));
+    AppSettings& s = CurrentSettings();
+
+    int index = 2; // 100%
+    for (int i = 0; i < count; ++i)
+    {
+        if (steps[i] <= s.fontScalePercent) index = i; // nearest step not above the current value
+    }
+    if (direction == 0) index = 2;
+    else index = std::clamp(index + direction, 0, count - 1);
+    if (steps[index] == s.fontScalePercent) return;
+
+    s.fontScalePercent = steps[index];
+    s.Save();
+    FluentTheme::Apply(*qApp, s);
+    OnAppSettingsApplied();
+}
+
+void MainWindow::RequestRestart()
+{
+    int running = 0;
+    for (const auto& srv : serverManager_->GetAll())
+    {
+        if (srv->GetState() != core::ServerState::Stopped) ++running;
+    }
+    if (running > 0 &&
+        QMessageBox::question(
+            this, TR("Khởi động lại ứng dụng"),
+            TR("Có %1 server đang chạy. Chúng sẽ được dừng an toàn trước khi app khởi động lại. Tiếp tục?").arg(running),
+            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
+    {
+        return;
+    }
+    RestartRequested() = true;
+    QApplication::quit(); // Application::Run starts the new instance after the servers have stopped
+}
+
+void MainWindow::LayoutActionButtons(const std::vector<QPushButton*>& visibleInOrder)
+{
+    // The row really changes shape with the server state instead of only recolouring
+    // greyed-out buttons: the main action always sits in the first slot.
+    const std::vector<QPushButton*> all = {buttonStart_, buttonStop_, buttonRestart_};
+    for (QPushButton* b : all)
+    {
+        actionLayout_->removeWidget(b);
+        b->setVisible(false);
+    }
+    int slot = 0;
+    for (QPushButton* b : visibleInOrder)
+    {
+        actionLayout_->insertWidget(slot++, b);
+        b->setVisible(true);
+    }
 }
 
 void MainWindow::ApplyRemoteSettings(bool interactive)
@@ -382,10 +465,10 @@ void MainWindow::ApplyRemoteSettings(bool interactive)
     }
     remoteActiveToken_.clear();
     remoteActivePort_ = 0;
-    const QString message = QStringLiteral("Không bật được điều khiển từ xa trên 127.0.0.1:%1 — %2").arg(port).arg(error);
+    const QString message = TR("Không bật được điều khiển từ xa trên 127.0.0.1:%1 — %2").arg(port).arg(error);
     if (interactive)
     {
-        QMessageBox::warning(this, QStringLiteral("Điều khiển từ xa"), message);
+        QMessageBox::warning(this, TR("Điều khiển từ xa"), message);
     }
     else if (trayIcon_ != nullptr)
     {
@@ -444,7 +527,7 @@ void MainWindow::ApplyConsoleSettings()
 
 void MainWindow::BuildToolbar()
 {
-    toolbar_ = addToolBar(QStringLiteral("Chính"));
+    toolbar_ = addToolBar(TR("Chính"));
     toolbar_->setMovable(false);
     toolbar_->setFloatable(false);
     toolbar_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -471,22 +554,22 @@ void MainWindow::BuildToolbar()
     addMenuButton(
         QStringLiteral("Server"),
         glyph::Server,
-        {makeAction(QStringLiteral("Server mới"), glyph::Add, &MainWindow::OnAddServerClicked),
-         makeAction(QStringLiteral("Import server có sẵn"), glyph::Download, &MainWindow::OnImportServerClicked),
-         makeAction(QStringLiteral("Xoá server"), glyph::Delete, &MainWindow::OnRemoveServerClicked)});
+        {makeAction(TR("Server mới"), glyph::Add, &MainWindow::OnAddServerClicked),
+         makeAction(TR("Import server có sẵn"), glyph::Download, &MainWindow::OnImportServerClicked),
+         makeAction(TR("Xoá server"), glyph::Delete, &MainWindow::OnRemoveServerClicked)});
 
     toolbar_->addSeparator();
 
     addMenuButton(
-        QStringLiteral("Cài đặt server"),
+        TR("Cài đặt server"),
         glyph::Sliders,
-        {makeAction(QStringLiteral("Cấu hình chạy (RAM, JVM, backup tự động)"), glyph::Sliders, &MainWindow::OnOpenServerOptionsClicked),
-         makeAction(QStringLiteral("Gameplay & mạng (server.properties)"), glyph::Settings, &MainWindow::OnOpenPropertiesClicked),
-         makeAction(QStringLiteral("Tunnel, Firewall & lịch restart"), glyph::Globe, &MainWindow::OnOpenAdvancedSettingsClicked),
-         makeAction(QStringLiteral("Sửa file cấu hình"), glyph::Edit, &MainWindow::OnEditConfigFileClicked),
-         makeAction(QStringLiteral("Chấp nhận EULA"), glyph::Page, &MainWindow::OnAcceptEulaClicked)});
+        {makeAction(TR("Cấu hình chạy (RAM, JVM, backup tự động)"), glyph::Sliders, &MainWindow::OnOpenServerOptionsClicked),
+         makeAction(TR("Gameplay & mạng (server.properties)"), glyph::Settings, &MainWindow::OnOpenPropertiesClicked),
+         makeAction(TR("Tunnel, Firewall & lịch restart"), glyph::Globe, &MainWindow::OnOpenAdvancedSettingsClicked),
+         makeAction(TR("Sửa file cấu hình"), glyph::Edit, &MainWindow::OnEditConfigFileClicked),
+         makeAction(TR("Chấp nhận EULA"), glyph::Page, &MainWindow::OnAcceptEulaClicked)});
 
-    auto* actionPlayers = makeAction(QStringLiteral("Người chơi"), glyph::People, &MainWindow::OnOpenPlayersClicked);
+    auto* actionPlayers = makeAction(TR("Người chơi"), glyph::People, &MainWindow::OnOpenPlayersClicked);
     toolbar_->addAction(actionPlayers);
     auto* actionBackups = makeAction(QStringLiteral("Backups"), glyph::Save, &MainWindow::OnOpenBackupsClicked);
     toolbar_->addAction(actionBackups);
@@ -494,15 +577,15 @@ void MainWindow::BuildToolbar()
     addMenuButton(
         QStringLiteral("Mod / Plugin"),
         glyph::Puzzle,
-        {makeAction(QStringLiteral("Thư viện (Modrinth)"), glyph::Library, &MainWindow::OnOpenLibraryClicked),
-         makeAction(QStringLiteral("Đã cài"), glyph::Puzzle, &MainWindow::OnOpenInstalledAddonsClicked)});
+        {makeAction(TR("Thư viện (Modrinth)"), glyph::Library, &MainWindow::OnOpenLibraryClicked),
+         makeAction(TR("Đã cài"), glyph::Puzzle, &MainWindow::OnOpenInstalledAddonsClicked)});
 
     // Right-aligned: refresh + application settings.
     auto* spacer = new QWidget(toolbar_);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar_->addWidget(spacer);
-    toolbar_->addAction(makeAction(QStringLiteral("Làm mới"), glyph::Refresh, [this]() { RefreshServerList(); }));
-    toolbar_->addAction(makeAction(QStringLiteral("Cài đặt"), glyph::Settings, &MainWindow::OnOpenAppSettingsClicked));
+    toolbar_->addAction(makeAction(TR("Làm mới"), glyph::Refresh, [this]() { RefreshServerList(); }));
+    toolbar_->addAction(makeAction(TR("Cài đặt"), glyph::Settings, &MainWindow::OnOpenAppSettingsClicked));
 }
 
 void MainWindow::BuildTrayIcon()
@@ -514,10 +597,10 @@ void MainWindow::BuildTrayIcon()
     trayIcon_->setToolTip(QStringLiteral("Redstone - Minecraft Server Manager"));
 
     auto* menu = new QMenu(this);
-    auto* showAction = menu->addAction(QStringLiteral("Hiện cửa sổ"));
+    auto* showAction = menu->addAction(TR("Hiện cửa sổ"));
     connect(showAction, &QAction::triggered, this, &MainWindow::ShowAndRaiseWindow);
     menu->addSeparator();
-    auto* exitAction = menu->addAction(QStringLiteral("Thoát"));
+    auto* exitAction = menu->addAction(TR("Thoát"));
     connect(exitAction, &QAction::triggered, qApp, &QApplication::quit);
     trayIcon_->setContextMenu(menu);
 
@@ -540,6 +623,8 @@ void MainWindow::ShowAndRaiseWindow()
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    CurrentSettings().windowGeometry = saveGeometry();
+    CurrentSettings().Save();
     if (!CurrentSettings().minimizeToTrayOnClose)
     {
         // "Nút X thu xuống khay" is off: closing the window quits the app.
@@ -554,7 +639,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
         {
             trayIcon_->showMessage(
                 QStringLiteral("Redstone"),
-                QStringLiteral("Ứng dụng vẫn chạy trong khay hệ thống. Bấm phải vào icon để Thoát hẳn."),
+                TR("Ứng dụng vẫn chạy trong khay hệ thống. Bấm phải vào icon để Thoát hẳn."),
                 QSystemTrayIcon::Information,
                 4000);
             trayNotificationShown_ = true;
@@ -598,13 +683,13 @@ void MainWindow::HandleAppEvent(core::AppEvent event)
                     switch (srv->GetState())
                     {
                         case core::ServerState::Running:
-                            trayIcon_->showMessage(name, QStringLiteral("Server đã khởi động."), QSystemTrayIcon::Information, 3000);
+                            trayIcon_->showMessage(name, TR("Server đã khởi động."), QSystemTrayIcon::Information, 3000);
                             break;
                         case core::ServerState::Stopped:
-                            trayIcon_->showMessage(name, QStringLiteral("Server đã dừng."), QSystemTrayIcon::Information, 3000);
+                            trayIcon_->showMessage(name, TR("Server đã dừng."), QSystemTrayIcon::Information, 3000);
                             break;
                         case core::ServerState::Crashed:
-                            trayIcon_->showMessage(name, QStringLiteral("Server bị crash!"), QSystemTrayIcon::Critical, 6000);
+                            trayIcon_->showMessage(name, TR("Server bị crash!"), QSystemTrayIcon::Critical, 6000);
                             break;
                         default: break;
                     }
@@ -646,9 +731,8 @@ void MainWindow::HandleAppEvent(core::AppEvent event)
             {
                 const auto reply = QMessageBox::question(
                     this,
-                    QStringLiteral("Cần chấp nhận Minecraft EULA"),
-                    QStringLiteral(
-                        "Server vừa dừng vì chưa chấp nhận Minecraft End User License Agreement:\n"
+                    TR("Cần chấp nhận Minecraft EULA"),
+                    TR("Server vừa dừng vì chưa chấp nhận Minecraft End User License Agreement:\n"
                         "https://aka.ms/MinecraftEULA\n\n"
                         "Bạn đã đọc và đồng ý (eula=true)?"),
                     QMessageBox::Yes | QMessageBox::No);
@@ -698,7 +782,7 @@ void MainWindow::OnOpenInstalledAddonsClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("Plugin/Mod đã cài"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, TR("Plugin/Mod đã cài"), TR("Hãy chọn một server trước."));
         return;
     }
     InstalledAddonsDialog dialog(srv->GetConfig(), this);
@@ -710,16 +794,16 @@ void MainWindow::OnEditConfigFileClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("Sửa file cấu hình"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, TR("Sửa file cấu hình"), TR("Hãy chọn một server trước."));
         return;
     }
 
     const QString startDir = QString::fromStdWString(srv->GetConfig().directory.wstring());
     const QString path = QFileDialog::getOpenFileName(
         this,
-        QStringLiteral("Chọn file để sửa (bukkit.yml, spigot.yml, config plugin...)"),
+        TR("Chọn file để sửa (bukkit.yml, spigot.yml, config plugin...)"),
         startDir,
-        QStringLiteral("File cấu hình (*.yml *.yaml *.properties *.json *.toml *.cfg *.conf *.txt);;Tất cả file (*.*)"));
+        TR("File cấu hình (*.yml *.yaml *.properties *.json *.toml *.cfg *.conf *.txt);;Tất cả file (*.*)"));
     if (path.isEmpty())
     {
         return;
@@ -734,7 +818,7 @@ void MainWindow::OnOpenAdvancedSettingsClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("Cài đặt nâng cao"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, TR("Cài đặt nâng cao"), TR("Hãy chọn một server trước."));
         return;
     }
     AdvancedSettingsDialog dialog(srv, serverManager_, configManager_, this);
@@ -746,6 +830,7 @@ void MainWindow::OnOpenAppSettingsClicked()
 {
     AppSettingsDialog dialog(this);
     connect(&dialog, &AppSettingsDialog::settingsApplied, this, &MainWindow::OnAppSettingsApplied);
+    connect(&dialog, &AppSettingsDialog::restartRequested, this, &MainWindow::RequestRestart, Qt::QueuedConnection);
     dialog.exec();
 }
 
@@ -764,7 +849,7 @@ void MainWindow::OnOpenServerOptionsClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("Cài đặt server"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, TR("Cài đặt server"), TR("Hãy chọn một server trước."));
         return;
     }
     ServerOptionsDialog dialog(srv, serverManager_, configManager_, this);
@@ -784,8 +869,8 @@ void MainWindow::OnRemoveServerClicked()
 
     const auto reply = QMessageBox::question(
         this,
-        QStringLiteral("Xác nhận"),
-        QStringLiteral("Xoá server \"%1\"? Server sẽ bị dừng nếu đang chạy.").arg(name),
+        TR("Xác nhận"),
+        TR("Xoá server \"%1\"? Server sẽ bị dừng nếu đang chạy.").arg(name),
         QMessageBox::Yes | QMessageBox::No);
     if (reply != QMessageBox::Yes)
     {
@@ -817,7 +902,7 @@ void MainWindow::OnStopClicked()
         return;
     }
     if (CurrentSettings().confirmStopRestart &&
-        QMessageBox::question(this, QStringLiteral("Dừng server"), QStringLiteral("Dừng server này? Người chơi đang online sẽ bị ngắt kết nối."),
+        QMessageBox::question(this, TR("Dừng server"), TR("Dừng server này? Người chơi đang online sẽ bị ngắt kết nối."),
                               QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
     {
         return;
@@ -835,7 +920,7 @@ void MainWindow::OnRestartClicked()
         return;
     }
     if (CurrentSettings().confirmStopRestart &&
-        QMessageBox::question(this, QStringLiteral("Khởi động lại"), QStringLiteral("Khởi động lại server này? Người chơi đang online sẽ bị ngắt kết nối."),
+        QMessageBox::question(this, TR("Khởi động lại"), TR("Khởi động lại server này? Người chơi đang online sẽ bị ngắt kết nối."),
                               QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes)
     {
         return;
@@ -879,8 +964,8 @@ void MainWindow::OnOpenLibraryClicked()
     {
         QMessageBox::information(
             this,
-            QStringLiteral("Thư viện Mod/Plugin"),
-            QStringLiteral("Hãy chọn (hoặc tạo) một server trước khi mở Thư viện."));
+            TR("Thư viện Mod/Plugin"),
+            TR("Hãy chọn (hoặc tạo) một server trước khi mở Thư viện."));
         return;
     }
     LibraryDialog dialog(srv->GetConfig(), this);
@@ -893,7 +978,7 @@ void MainWindow::OnOpenPropertiesClicked()
     if (!srv)
     {
         QMessageBox::information(
-            this, QStringLiteral("server.properties"), QStringLiteral("Hãy chọn một server trước."));
+            this, QStringLiteral("server.properties"), TR("Hãy chọn một server trước."));
         return;
     }
     PropertiesDialog dialog(srv->GetConfig(), this);
@@ -906,7 +991,7 @@ void MainWindow::OnOpenPlayersClicked()
     if (!srv)
     {
         QMessageBox::information(
-            this, QStringLiteral("Quản lý người chơi"), QStringLiteral("Hãy chọn một server trước."));
+            this, TR("Quản lý người chơi"), TR("Hãy chọn một server trước."));
         return;
     }
     PlayersDialog dialog(srv, this); // read-only lists work while stopped; actions enable when Running
@@ -918,7 +1003,7 @@ void MainWindow::OnOpenBackupsClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("Backups"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, QStringLiteral("Backups"), TR("Hãy chọn một server trước."));
         return;
     }
     BackupsDialog dialog(srv, this);
@@ -930,15 +1015,14 @@ void MainWindow::OnAcceptEulaClicked()
     auto srv = serverManager_->Get(GetSelectedServerId());
     if (!srv)
     {
-        QMessageBox::information(this, QStringLiteral("EULA"), QStringLiteral("Hãy chọn một server trước."));
+        QMessageBox::information(this, QStringLiteral("EULA"), TR("Hãy chọn một server trước."));
         return;
     }
 
     const auto reply = QMessageBox::question(
         this,
         QStringLiteral("Minecraft EULA"),
-        QStringLiteral(
-            "Minecraft server yêu cầu bạn đọc và đồng ý với Minecraft End User License Agreement:\n"
+        TR("Minecraft server yêu cầu bạn đọc và đồng ý với Minecraft End User License Agreement:\n"
             "https://aka.ms/MinecraftEULA\n\n"
             "Bạn có đồng ý không?"),
         QMessageBox::Yes | QMessageBox::No);
@@ -958,11 +1042,11 @@ void MainWindow::AcceptEulaForCurrentServer()
     if (srv->AcceptEula())
     {
         QMessageBox::information(
-            this, QStringLiteral("EULA"), QStringLiteral("Đã cập nhật eula.txt. Bạn có thể Start lại server."));
+            this, QStringLiteral("EULA"), TR("Đã cập nhật eula.txt. Bạn có thể Start lại server."));
     }
     else
     {
-        QMessageBox::warning(this, QStringLiteral("EULA"), QStringLiteral("Không ghi được eula.txt."));
+        QMessageBox::warning(this, QStringLiteral("EULA"), TR("Không ghi được eula.txt."));
     }
 }
 
@@ -1077,9 +1161,10 @@ void MainWindow::RefreshControlsForState()
         buttonStart_->setEnabled(false);
         buttonStop_->setEnabled(false);
         buttonRestart_->setEnabled(false);
+        LayoutActionButtons({buttonStart_});
         buttonSend_->setEnabled(false);
         buttonRemove_->setEnabled(false);
-        labelStatus_->setText(QStringLiteral("Chưa chọn server"));
+        labelStatus_->setText(TR("Chưa chọn server"));
         labelStatus_->setStyleSheet(QString());
         labelStats_->setText(QString());
         return;
@@ -1093,8 +1178,25 @@ void MainWindow::RefreshControlsForState()
         state == core::ServerState::Restarting;
 
     buttonStart_->setEnabled(!running && !transitioning);
-    buttonStop_->setEnabled(running);
+    buttonStop_->setEnabled(running || state == core::ServerState::Starting);
     buttonRestart_->setEnabled(running);
+    if (state == core::ServerState::Running)
+    {
+        LayoutActionButtons({buttonStop_, buttonRestart_});       // [Stop] [Restart]
+    }
+    else if (state == core::ServerState::Starting)
+    {
+        LayoutActionButtons({buttonStop_});                       // can still be cancelled
+    }
+    else if (transitioning)
+    {
+        buttonStop_->setEnabled(false);
+        LayoutActionButtons({buttonStop_});                       // busy: one disabled button, nothing else to click
+    }
+    else
+    {
+        LayoutActionButtons({buttonStart_});                      // Stopped / Crashed
+    }
     buttonSend_->setEnabled(running);
     buttonRemove_->setEnabled(!transitioning);
 
@@ -1165,7 +1267,7 @@ bool MainWindow::PassesConsoleFilter(const QString& line) const
 void MainWindow::UpdateFilterCountLabel()
 {
     const bool active = !editFilter_->text().trimmed().isEmpty() || comboFilterKind_->currentIndex() != 0;
-    labelFilterCount_->setText(active ? QStringLiteral("%1 / %2 dòng").arg(shownLineCount_).arg(totalLineCount_) : QString());
+    labelFilterCount_->setText(active ? TR("%1 / %2 dòng").arg(shownLineCount_).arg(totalLineCount_) : QString());
 }
 
 void MainWindow::OnConsoleFilterChanged()

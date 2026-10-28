@@ -1,4 +1,5 @@
 #include "remote/RemoteControlServer.hpp"
+#include "ui/I18n.hpp"
 
 #include "backup/BackupManager.hpp"
 #include "config/ServerProperties.hpp"
@@ -142,7 +143,7 @@ bool RemoteControlServer::Start(quint16 port, const QString& token, QString* err
     Stop();
     if (token.size() < 16)
     {
-        if (error != nullptr) *error = QStringLiteral("Token quá ngắn (cần ít nhất 16 ký tự).");
+        if (error != nullptr) *error = TR("Token quá ngắn (cần ít nhất 16 ký tự).");
         return false;
     }
     token_ = token;
@@ -296,7 +297,7 @@ void RemoteControlServer::HandleLine(QTcpSocket* socket, const QByteArray& line)
     const QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject())
     {
-        Reply(socket, 0, {false, {}, QStringLiteral("Yêu cầu không phải JSON object hợp lệ."), false});
+        Reply(socket, 0, {false, {}, TR("Yêu cầu không phải JSON object hợp lệ."), false});
         return;
     }
     const QJsonObject request = doc.object();
@@ -367,7 +368,7 @@ std::shared_ptr<server::MinecraftServer> RemoteControlServer::ResolveServer(cons
     const QString wanted = key.trimmed();
     if (wanted.isEmpty())
     {
-        *error = QStringLiteral("Thiếu tham số \"server\" (id hoặc tên server).");
+        *error = TR("Thiếu tham số \"server\" (id hoặc tên server).");
         return nullptr;
     }
     std::shared_ptr<server::MinecraftServer> byName;
@@ -389,8 +390,8 @@ std::shared_ptr<server::MinecraftServer> RemoteControlServer::ResolveServer(cons
     {
         return byName;
     }
-    *error = nameMatches > 1 ? QStringLiteral("Có nhiều server trùng tên \"%1\" - hãy dùng id.").arg(wanted)
-                             : QStringLiteral("Không tìm thấy server \"%1\".").arg(wanted);
+    *error = nameMatches > 1 ? TR("Có nhiều server trùng tên \"%1\" - hãy dùng id.").arg(wanted)
+                             : TR("Không tìm thấy server \"%1\".").arg(wanted);
     return nullptr;
 }
 
@@ -487,11 +488,11 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     {
         if (state != core::ServerState::Stopped && state != core::ServerState::Crashed)
         {
-            return fail(QStringLiteral("Server đang ở trạng thái %1, không thể Start.").arg(StateName(state)));
+            return fail(TR("Server đang ở trạng thái %1, không thể Start.").arg(StateName(state)));
         }
         if (!srv->Start())
         {
-            return fail(QStringLiteral("Không khởi động được server (kiểm tra Java, file jar, EULA...)."));
+            return fail(TR("Không khởi động được server (kiểm tra Java, file jar, EULA...)."));
         }
         r.data.insert(QStringLiteral("state"), StateName(srv->GetState()));
         return r;
@@ -500,7 +501,7 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     {
         if (state != core::ServerState::Running && state != core::ServerState::Starting)
         {
-            return fail(QStringLiteral("Server đang ở trạng thái %1, không thể Stop.").arg(StateName(state)));
+            return fail(TR("Server đang ở trạng thái %1, không thể Stop.").arg(StateName(state)));
         }
         std::thread([srv]() { srv->Stop(); }).detach(); // blocks up to stopTimeoutSeconds
         r.data.insert(QStringLiteral("accepted"), true);
@@ -510,7 +511,7 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     {
         if (state != core::ServerState::Running)
         {
-            return fail(QStringLiteral("Chỉ Restart được khi server đang Running (hiện: %1).").arg(StateName(state)));
+            return fail(TR("Chỉ Restart được khi server đang Running (hiện: %1).").arg(StateName(state)));
         }
         std::thread([srv]() { srv->Restart(); }).detach();
         r.data.insert(QStringLiteral("accepted"), true);
@@ -533,11 +534,11 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
         QString command = request.value(QStringLiteral("command")).toString();
         if (!CleanLine(command, 512))
         {
-            return fail(QStringLiteral("Lệnh trống, quá dài hoặc chứa ký tự điều khiển."));
+            return fail(TR("Lệnh trống, quá dài hoặc chứa ký tự điều khiển."));
         }
         if (!srv->SendCommand(Q2W(command)))
         {
-            return fail(QStringLiteral("Không gửi được lệnh - server chưa Running."));
+            return fail(TR("Không gửi được lệnh - server chưa Running."));
         }
         r.data.insert(QStringLiteral("sent"), command);
         return r;
@@ -549,7 +550,7 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     if (cmd == QLatin1String("backups")) return CmdBackups(srv);
     if (cmd == QLatin1String("backup")) return CmdBackup(socket, srv, id);
 
-    return fail(QStringLiteral("Lệnh không được hỗ trợ: \"%1\".").arg(cmd));
+    return fail(TR("Lệnh không được hỗ trợ: \"%1\".").arg(cmd));
 }
 
 RemoteControlServer::Result RemoteControlServer::CmdPlayers(const std::shared_ptr<server::MinecraftServer>& srv) const
@@ -608,11 +609,11 @@ RemoteControlServer::Result RemoteControlServer::CmdPlayerAction(
         action != QLatin1String("whitelist-off") && action != QLatin1String("whitelist-reload");
     if (needsName && !ValidPlayerName(name) && !(action == QLatin1String("ban-ip") || action == QLatin1String("pardon-ip")))
     {
-        return fail(QStringLiteral("Tên người chơi không hợp lệ (chỉ gồm chữ, số, _ hoặc .)."));
+        return fail(TR("Tên người chơi không hợp lệ (chỉ gồm chữ, số, _ hoặc .)."));
     }
     if (!reason.isEmpty() && !CleanLine(reason, 200))
     {
-        return fail(QStringLiteral("Lý do chứa ký tự không hợp lệ hoặc quá dài."));
+        return fail(TR("Lý do chứa ký tự không hợp lệ hoặc quá dài."));
     }
 
     if (action == QLatin1String("op")) command = QStringLiteral("op %1").arg(name);
@@ -625,7 +626,7 @@ RemoteControlServer::Result RemoteControlServer::CmdPlayerAction(
         const QString ip = request.value(QStringLiteral("name")).toString().trimmed();
         if (!ValidIp(ip))
         {
-            return fail(QStringLiteral("Địa chỉ IP không hợp lệ."));
+            return fail(TR("Địa chỉ IP không hợp lệ."));
         }
         command = action == QLatin1String("ban-ip") ? QStringLiteral("ban-ip %1 %2").arg(ip, reason) : QStringLiteral("pardon-ip %1").arg(ip);
     }
@@ -640,7 +641,7 @@ RemoteControlServer::Result RemoteControlServer::CmdPlayerAction(
         static const QStringList modes = {QStringLiteral("survival"), QStringLiteral("creative"), QStringLiteral("adventure"), QStringLiteral("spectator")};
         if (!modes.contains(mode))
         {
-            return fail(QStringLiteral("Gamemode phải là survival, creative, adventure hoặc spectator."));
+            return fail(TR("Gamemode phải là survival, creative, adventure hoặc spectator."));
         }
         command = QStringLiteral("gamemode %1 %2").arg(mode, name);
     }
@@ -648,19 +649,19 @@ RemoteControlServer::Result RemoteControlServer::CmdPlayerAction(
     {
         if (!CleanLine(text, 256))
         {
-            return fail(QStringLiteral("Nội dung tin nhắn trống, quá dài hoặc chứa ký tự điều khiển."));
+            return fail(TR("Nội dung tin nhắn trống, quá dài hoặc chứa ký tự điều khiển."));
         }
         command = action == QLatin1String("msg") ? QStringLiteral("msg %1 %2").arg(name, text) : QStringLiteral("say %1").arg(text);
     }
     else
     {
-        return fail(QStringLiteral("Hành động người chơi không hợp lệ: \"%1\".").arg(action));
+        return fail(TR("Hành động người chơi không hợp lệ: \"%1\".").arg(action));
     }
 
     command = command.trimmed();
     if (!srv->SendCommand(Q2W(command)))
     {
-        return fail(QStringLiteral("Không gửi được - server chưa Running."));
+        return fail(TR("Không gửi được - server chưa Running."));
     }
     r.data.insert(QStringLiteral("sent"), command);
     return r;
@@ -690,19 +691,19 @@ RemoteControlServer::Result RemoteControlServer::CmdProps(
     if (!keyPattern.match(key).hasMatch())
     {
         r.ok = false;
-        r.error = QStringLiteral("Tên khoá không hợp lệ.");
+        r.error = TR("Tên khoá không hợp lệ.");
         return r;
     }
     if (value.size() > 512 || value.contains(QLatin1Char('\n')) || value.contains(QLatin1Char('\r')))
     {
         r.ok = false;
-        r.error = QStringLiteral("Giá trị quá dài hoặc có xuống dòng.");
+        r.error = TR("Giá trị quá dài hoặc có xuống dòng.");
         return r;
     }
     if (!config::WriteServerProperties(cfg, {{Q2W(key), Q2W(value)}}))
     {
         r.ok = false;
-        r.error = QStringLiteral("Không ghi được server.properties.");
+        r.error = TR("Không ghi được server.properties.");
         return r;
     }
     r.data.insert(QStringLiteral("key"), key);
@@ -745,7 +746,7 @@ RemoteControlServer::Result RemoteControlServer::CmdBackup(
         else
         {
             result.ok = false;
-            result.error = QStringLiteral("Backup thất bại (server chưa có world?).");
+            result.error = TR("Backup thất bại (server chưa có world?).");
         }
         if (RemoteControlServer* s = self.data())
         {

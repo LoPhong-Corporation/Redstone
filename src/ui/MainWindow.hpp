@@ -35,6 +35,8 @@ class QToolBar;
 class QSystemTrayIcon;
 class QCloseEvent;
 class QAction;
+class QHBoxLayout;
+class QPushButton;
 namespace remote { class RemoteControlServer; }
 class QComboBox;
 class QTimer;
@@ -84,6 +86,9 @@ private slots:
     void OnOpenAppSettingsClicked();      // global app settings (theme, console, system)
     void OnOpenServerOptionsClicked();    // per-server run options (RAM, JVM flags, backups...)
     void OnAppSettingsApplied();
+    void ChangeZoom(int direction);       // +1 / -1 / 0 (reset) - Ctrl +, Ctrl -, Ctrl 0
+    void LayoutActionButtons(const std::vector<QPushButton*>& visibleInOrder);
+    void RequestRestart();
     void ApplyRemoteSettings(bool interactive);          // theme/console settings changed: refresh the chrome
     void OnEditConfigFileClicked();       // Fork-inspired generic file editor
 
@@ -126,6 +131,7 @@ private:
     QString remoteActiveToken_;
     quint16 remoteActivePort_ = 0;
 
+    QHBoxLayout* actionLayout_ = nullptr;
     QToolBar* toolbar_ = nullptr;
     QSystemTrayIcon* trayIcon_ = nullptr;
     bool trayNotificationShown_ = false; // only show the "still running" balloon once per session

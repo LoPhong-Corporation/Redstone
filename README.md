@@ -20,6 +20,15 @@ Discord bot, MSPT thật.
 - **Người chơi** (`PlayersDialog`): danh sách online (theo dõi từ log join/left), whitelist, operators, bị cấm (người + IP) đọc từ file JSON, thao tác op/kick/ban/gamemode/tin nhắn, bật/tắt whitelist, thông báo `say`, gamemode mặc định, độ khó, AFK timeout, ngày/đêm/thời tiết. Xem được cả khi server đang tắt.
 - Build cần Qt >= 6.5; đặt `-DCMAKE_PREFIX_PATH=...` hoặc biến môi trường `QT_DIR`.
 
+## Đa ngôn ngữ, phóng giao diện, chi tiết thư viện, CLI có màu
+
+- **Đa ngôn ngữ**: *Cài đặt > Giao diện > Ngôn ngữ* (Tiếng Việt / English / theo hệ thống). Chuỗi gốc trong code là tiếng Việt, bản dịch là từ điển JSON (`resources/i18n/en.json` nhúng vào exe). Thêm ngôn ngữ không cần build: đặt `<mã>.json` vào thư mục `translations/` cạnh exe — xem `resources/i18n/README.md`. Cần khởi động lại app để đổi ngôn ngữ (app hỏi và tự khởi động lại, đợi các server dừng an toàn trước).
+- **Chữ dễ đọc / phóng cửa sổ**: cỡ chữ gốc tăng lên 10.5pt; *Cỡ chữ giao diện* 80-200% (phím tắt **Ctrl +**, **Ctrl -**, **Ctrl 0**); *Phóng to cả cửa sổ* (Tự động theo Windows hoặc 100-250%, qua `QT_SCALE_FACTOR`, cần restart); high-DPI không làm tròn nên 125%/150% của Windows vẫn nét; cửa sổ mở theo kích thước màn hình và nhớ vị trí/kích thước lần sau.
+- **Nút đổi vị trí theo trạng thái**: hàng nút Start/Stop/Restart giờ thực sự đổi bố cục — Stopped/Crashed: chỉ **Start**; Running: **Stop** rồi **Restart**; đang Starting: chỉ **Stop**; đang chuyển trạng thái: một nút mờ. Ngoài ra khi rê chuột nút nhích lên 1px, khi bấm nhích xuống 1px.
+- **Thư viện Mod/Plugin chi tiết hơn**: tab *Tổng quan* (tác giả và vai trò, thống kê, môi trường client/server, loader, khoảng phiên bản Minecraft và có hỗ trợ bản của server bạn không, giấy phép, ngày đăng/cập nhật, liên kết mã nguồn/báo lỗi/wiki/Discord/ủng hộ, thẻ), *Mô tả* (nội dung đầy đủ), *Phiên bản* (danh sách bản tương thích kèm changelog, chọn đúng bản muốn cài), *Ảnh* (thư viện ảnh); hiện tên các phụ thuộc bắt buộc.
+- **Mod/Plugin đã cài**: kiểm tra và cập nhật theo SHA-512, giữ bản cũ trong `addons-backup/`. Cài modpack `.mrpack` thật (tải mod, chép overrides).
+- **CLI `redstonectl`**: logo redstone ASCII (`redstonectl banner`, tự hiện ở `help`/`shell`), màu cho bảng/trạng thái/log/JSON/lỗi/cảnh báo (tắt bằng `--no-color` hoặc `NO_COLOR`), ngôn ngữ `--lang vi|en` (hoặc `REDSTONE_LANG`, mặc định theo hệ thống), và **tự hỏi cài OpenSSH Client** khi thiếu `ssh` (`--yes` để tự đồng ý). Trong app, trang *Điều khiển từ xa* cũng hiện trạng thái OpenSSH Server và hỏi cài giúp trên Windows.
+
 ## Icon, tên cửa sổ và điều khiển từ xa
 
 - **Icon Redstone** (`resources/redstone.ico`, 16-256px, nền trong suốt, làm từ hình bạn gửi) được nhúng vào file exe (`resources/app.rc`), cửa sổ, khay hệ thống và installer. Tiêu đề cửa sổ: "Redstone - Minecraft Server Manager".

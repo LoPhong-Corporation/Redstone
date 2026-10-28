@@ -79,7 +79,7 @@ func (e *Env) sent(raw json.RawMessage) {
 			Sent string `json:"sent"`
 		}
 		_ = json.Unmarshal(raw, &r)
-		fmt.Fprintln(e.Out, "Đã gửi:", r.Sent)
+		fmt.Fprintln(e.Out, T("Đã gửi:"), r.Sent)
 	})
 }
 
@@ -89,7 +89,7 @@ func playerAction(action string, needName bool, withReason bool) func(*Env, stri
 		params := map[string]any{"server": server, "action": action}
 		if needName {
 			if len(args) < 1 {
-				return fmt.Errorf("%w: thiếu tên người chơi", errUsage)
+				return fmt.Errorf(T("%w: thiếu tên người chơi"), errUsage)
 			}
 			params["name"] = args[0]
 			if withReason && len(args) > 1 {
@@ -129,7 +129,7 @@ func waitForState(env *Env, server string, timeout time.Duration, wantRestartCyc
 			sawLeave = true
 		}
 		if sawLeave && ok(s.State) {
-			fmt.Fprintf(env.Out, "Trạng thái: %s\n", colorState(s.State))
+			fmt.Fprintf(env.Out, T("Trạng thái: %s\n"), colorState(s.State))
 			return nil
 		}
 		select {
@@ -138,7 +138,7 @@ func waitForState(env *Env, server string, timeout time.Duration, wantRestartCyc
 		case <-time.After(time.Second):
 		}
 	}
-	return fmt.Errorf("hết %s mà trạng thái vẫn là %q", timeout, last)
+	return fmt.Errorf(T("hết %s mà trạng thái vẫn là %q"), timeout, last)
 }
 
 func lifecycle(name string, target func(string) bool, cycle bool) func(*Env, string, []string) error {
@@ -158,7 +158,7 @@ func lifecycle(name string, target func(string) bool, cycle bool) func(*Env, str
 			return nil
 		}
 		if !*wait {
-			fmt.Fprintf(env.Out, "Đã yêu cầu %s. Dùng --wait để chờ xong, hoặc `status` để xem.\n", name)
+			fmt.Fprintf(env.Out, T("Đã yêu cầu %s. Dùng --wait để chờ xong, hoặc `status` để xem.\n"), name)
 			return nil
 		}
 		return waitForState(env, server, *waitTimeout, cycle, target)
@@ -167,9 +167,13 @@ func lifecycle(name string, target func(string) bool, cycle bool) func(*Env, str
 
 var commands []*cmdSpec
 
-func init() {
+func buildCommands() {
 	commands = []*cmdSpec{
-		{Name: "ping", Help: "Kiểm tra kết nối", Run: func(env *Env, _ string, _ []string) error {
+		{Name: "banner", Help: "In logo redstone ASCII", Run: func(env *Env, _ string, _ []string) error {
+			printBanner(env.Out)
+			return nil
+		}},
+		{Name: "ping", Help: T("Kiểm tra kết nối"), Run: func(env *Env, _ string, _ []string) error {
 			start := time.Now()
 			raw, err := env.call("ping", nil)
 			if err != nil {
@@ -178,7 +182,7 @@ func init() {
 			env.show(raw, func() { fmt.Fprintf(env.Out, "pong (%s)\n", time.Since(start).Round(time.Millisecond)) })
 			return nil
 		}},
-		{Name: "list", Help: "Liệt kê server và trạng thái", Run: func(env *Env, _ string, _ []string) error {
+		{Name: "list", Help: T("Liệt kê server và trạng thái"), Run: func(env *Env, _ string, _ []string) error {
 			raw, err := env.call("list", nil)
 			if err != nil {
 				return err
@@ -192,7 +196,7 @@ func init() {
 			})
 			return nil
 		}},
-		{Name: "status", Args: "<server>", Help: "Chi tiết một server", NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
+		{Name: "status", Args: "<server>", Help: T("Chi tiết một server"), NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
 			raw, err := env.call("status", map[string]any{"server": server})
 			if err != nil {
 				return err
@@ -204,16 +208,16 @@ func init() {
 			})
 			return nil
 		}},
-		{Name: "start", Args: "<server> [--wait]", Help: "Khởi động server", NeedsServer: true,
+		{Name: "start", Args: "<server> [--wait]", Help: T("Khởi động server"), NeedsServer: true,
 			Run: lifecycle("start", func(s string) bool { return s == "Running" }, false)},
-		{Name: "stop", Args: "<server> [--wait]", Help: "Dừng server an toàn (lưu world)", NeedsServer: true,
+		{Name: "stop", Args: "<server> [--wait]", Help: T("Dừng server an toàn (lưu world)"), NeedsServer: true,
 			Run: lifecycle("stop", func(s string) bool { return s == "Stopped" }, false)},
-		{Name: "restart", Args: "<server> [--wait]", Help: "Khởi động lại server", NeedsServer: true,
+		{Name: "restart", Args: "<server> [--wait]", Help: T("Khởi động lại server"), NeedsServer: true,
 			Run: lifecycle("restart", func(s string) bool { return s == "Running" }, true)},
-		{Name: "console", Args: "<server> [-n 100] [-f]", Help: "Xem log console (-f: theo dõi trực tiếp, Ctrl-C để thoát)", NeedsServer: true, Run: runConsole},
-		{Name: "send", Args: "<server> <lệnh...>", Help: "Gửi một lệnh vào console của server", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "console", Args: "<server> [-n 100] [-f]", Help: T("Xem log console (-f: theo dõi trực tiếp, Ctrl-C để thoát)"), NeedsServer: true, Run: runConsole},
+		{Name: "send", Args: T("<server> <lệnh...>"), Help: T("Gửi một lệnh vào console của server"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("%w: thiếu lệnh cần gửi", errUsage)
+				return fmt.Errorf(T("%w: thiếu lệnh cần gửi"), errUsage)
 			}
 			raw, err := env.call("send", map[string]any{"server": server, "command": strings.Join(args, " ")})
 			if err != nil {
@@ -222,18 +226,18 @@ func init() {
 			env.sent(raw)
 			return nil
 		}},
-		{Name: "players", Args: "<server>", Help: "Người chơi online, whitelist, OP, danh sách cấm", NeedsServer: true, Run: runPlayers},
-		{Name: "op", Args: "<server> <tên>", Help: "Cấp OP", NeedsServer: true, Run: playerAction("op", true, false)},
-		{Name: "deop", Args: "<server> <tên>", Help: "Thu hồi OP", NeedsServer: true, Run: playerAction("deop", true, false)},
-		{Name: "kick", Args: "<server> <tên> [lý do...]", Help: "Kick người chơi", NeedsServer: true, Run: playerAction("kick", true, true)},
-		{Name: "ban", Args: "<server> <tên> [lý do...]", Help: "Ban người chơi", NeedsServer: true, Run: playerAction("ban", true, true)},
-		{Name: "pardon", Args: "<server> <tên>", Help: "Gỡ ban người chơi", NeedsServer: true, Run: playerAction("pardon", true, false)},
-		{Name: "banip", Args: "<server> <ip> [lý do...]", Help: "Ban địa chỉ IP", NeedsServer: true, Run: playerAction("ban-ip", true, true)},
-		{Name: "pardonip", Args: "<server> <ip>", Help: "Gỡ ban địa chỉ IP", NeedsServer: true, Run: playerAction("pardon-ip", true, false)},
-		{Name: "whitelist", Args: "<server> add|remove <tên> | on | off | reload", Help: "Quản lý whitelist", NeedsServer: true, Run: runWhitelist},
-		{Name: "gamemode", Args: "<server> <survival|creative|adventure|spectator> <tên>", Help: "Đổi gamemode người chơi", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "players", Args: "<server>", Help: T("Người chơi online, whitelist, OP, danh sách cấm"), NeedsServer: true, Run: runPlayers},
+		{Name: "op", Args: T("<server> <tên>"), Help: T("Cấp OP"), NeedsServer: true, Run: playerAction("op", true, false)},
+		{Name: "deop", Args: T("<server> <tên>"), Help: T("Thu hồi OP"), NeedsServer: true, Run: playerAction("deop", true, false)},
+		{Name: "kick", Args: T("<server> <tên> [lý do...]"), Help: T("Kick người chơi"), NeedsServer: true, Run: playerAction("kick", true, true)},
+		{Name: "ban", Args: T("<server> <tên> [lý do...]"), Help: T("Ban người chơi"), NeedsServer: true, Run: playerAction("ban", true, true)},
+		{Name: "pardon", Args: T("<server> <tên>"), Help: T("Gỡ ban người chơi"), NeedsServer: true, Run: playerAction("pardon", true, false)},
+		{Name: "banip", Args: T("<server> <ip> [lý do...]"), Help: T("Ban địa chỉ IP"), NeedsServer: true, Run: playerAction("ban-ip", true, true)},
+		{Name: "pardonip", Args: "<server> <ip>", Help: T("Gỡ ban địa chỉ IP"), NeedsServer: true, Run: playerAction("pardon-ip", true, false)},
+		{Name: "whitelist", Args: T("<server> add|remove <tên> | on | off | reload"), Help: T("Quản lý whitelist"), NeedsServer: true, Run: runWhitelist},
+		{Name: "gamemode", Args: T("<server> <survival|creative|adventure|spectator> <tên>"), Help: T("Đổi gamemode người chơi"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			if len(args) != 2 {
-				return fmt.Errorf("%w: redstonectl gamemode <server> <mode> <tên>", errUsage)
+				return fmt.Errorf(T("%w: redstonectl gamemode <server> <mode> <tên>"), errUsage)
 			}
 			raw, err := env.call("player", map[string]any{"server": server, "action": "gamemode", "mode": args[0], "name": args[1]})
 			if err != nil {
@@ -242,9 +246,9 @@ func init() {
 			env.sent(raw)
 			return nil
 		}},
-		{Name: "msg", Args: "<server> <tên> <nội dung...>", Help: "Nhắn riêng cho người chơi", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "msg", Args: T("<server> <tên> <nội dung...>"), Help: T("Nhắn riêng cho người chơi"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			if len(args) < 2 {
-				return fmt.Errorf("%w: redstonectl msg <server> <tên> <nội dung>", errUsage)
+				return fmt.Errorf(T("%w: redstonectl msg <server> <tên> <nội dung>"), errUsage)
 			}
 			raw, err := env.call("player", map[string]any{"server": server, "action": "msg", "name": args[0], "text": strings.Join(args[1:], " ")})
 			if err != nil {
@@ -253,9 +257,9 @@ func init() {
 			env.sent(raw)
 			return nil
 		}},
-		{Name: "say", Args: "<server> <nội dung...>", Help: "Thông báo tới toàn server", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "say", Args: T("<server> <nội dung...>"), Help: T("Thông báo tới toàn server"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			if len(args) == 0 {
-				return fmt.Errorf("%w: thiếu nội dung", errUsage)
+				return fmt.Errorf(T("%w: thiếu nội dung"), errUsage)
 			}
 			raw, err := env.call("player", map[string]any{"server": server, "action": "say", "text": strings.Join(args, " ")})
 			if err != nil {
@@ -264,8 +268,8 @@ func init() {
 			env.sent(raw)
 			return nil
 		}},
-		{Name: "backup", Args: "<server>", Help: "Tạo backup ngay (an toàn khi server đang chạy)", NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
-			fmt.Fprintln(os.Stderr, "Đang tạo backup...")
+		{Name: "backup", Args: "<server>", Help: T("Tạo backup ngay (an toàn khi server đang chạy)"), NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
+			fmt.Fprintln(os.Stderr, T("Đang tạo backup..."))
 			old := env.Timeout
 			env.Timeout = 30 * time.Minute // compressing a big world can take a while
 			defer func() { env.Timeout = old }()
@@ -278,11 +282,11 @@ func init() {
 					Name string `json:"name"`
 				}
 				_ = json.Unmarshal(raw, &r)
-				fmt.Fprintln(env.Out, "Đã tạo:", r.Name)
+				fmt.Fprintln(env.Out, T("Đã tạo:"), r.Name)
 			})
 			return nil
 		}},
-		{Name: "backups", Args: "<server>", Help: "Danh sách backup", NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
+		{Name: "backups", Args: "<server>", Help: T("Danh sách backup"), NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
 			raw, err := env.call("backups", map[string]any{"server": server})
 			if err != nil {
 				return err
@@ -296,7 +300,7 @@ func init() {
 				}
 				_ = json.Unmarshal(raw, &r)
 				if len(r.Backups) == 0 {
-					fmt.Fprintln(env.Out, "Chưa có backup nào.")
+					fmt.Fprintln(env.Out, T("Chưa có backup nào."))
 				}
 				for _, b := range r.Backups {
 					fmt.Fprintf(env.Out, "%-40s %8.1f MB\n", b.Name, b.SizeBytes/1048576)
@@ -304,7 +308,7 @@ func init() {
 			})
 			return nil
 		}},
-		{Name: "props", Args: "<server> [khoá]", Help: "Xem server.properties (hoặc một khoá)", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "props", Args: T("<server> [khoá]"), Help: T("Xem server.properties (hoặc một khoá)"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			raw, err := env.call("props", map[string]any{"server": server})
 			if err != nil {
 				return err
@@ -316,7 +320,7 @@ func init() {
 			if len(args) == 1 {
 				v, ok := r.Properties[args[0]]
 				if !ok {
-					return fmt.Errorf("không có khoá %q trong server.properties", args[0])
+					return fmt.Errorf(T("không có khoá %q trong server.properties"), args[0])
 				}
 				if env.JSON {
 					out, _ := json.Marshal(map[string]string{args[0]: v})
@@ -333,15 +337,15 @@ func init() {
 			})
 			return nil
 		}},
-		{Name: "prop-set", Args: "<server> <khoá> <giá trị...>", Help: "Đặt một khoá server.properties (có hiệu lực sau khi restart)", NeedsServer: true, Run: func(env *Env, server string, args []string) error {
+		{Name: "prop-set", Args: T("<server> <khoá> <giá trị...>"), Help: T("Đặt một khoá server.properties (có hiệu lực sau khi restart)"), NeedsServer: true, Run: func(env *Env, server string, args []string) error {
 			if len(args) < 2 {
-				return fmt.Errorf("%w: redstonectl prop-set <server> <khoá> <giá trị>", errUsage)
+				return fmt.Errorf(T("%w: redstonectl prop-set <server> <khoá> <giá trị>"), errUsage)
 			}
 			raw, err := env.call("prop-set", map[string]any{"server": server, "key": args[0], "value": strings.Join(args[1:], " ")})
 			if err != nil {
 				return err
 			}
-			env.show(raw, func() { fmt.Fprintf(env.Out, "Đã đặt %s. Restart server để áp dụng.\n", args[0]) })
+			env.show(raw, func() { fmt.Fprintf(env.Out, T("Đã đặt %s. Restart server để áp dụng.\n"), args[0]) })
 			return nil
 		}},
 	}
@@ -363,7 +367,7 @@ func RunCommand(env *Env, words []string) error {
 	}
 	spec := findCommand(words[0])
 	if spec == nil {
-		return fmt.Errorf("%w: lệnh không tồn tại %q (xem `redstonectl help`)", errUsage, words[0])
+		return fmt.Errorf(T("%w: lệnh không tồn tại %q (xem `redstonectl help`)"), errUsage, words[0])
 	}
 	args := words[1:]
 	server := ""
@@ -395,7 +399,7 @@ func RunCommand(env *Env, words []string) error {
 }
 
 func runWhitelist(env *Env, server string, args []string) error {
-	bad := fmt.Errorf("%w: redstonectl whitelist <server> add|remove <tên> | on | off | reload", errUsage)
+	bad := fmt.Errorf(T("%w: redstonectl whitelist <server> add|remove <tên> | on | off | reload"), errUsage)
 	if len(args) == 0 {
 		return bad
 	}
@@ -449,7 +453,7 @@ func runPlayers(env *Env, server string, _ []string) error {
 		_ = json.Unmarshal(raw, &r)
 		join := func(items []string) string {
 			if len(items) == 0 {
-				return "(trống)"
+				return T("(trống)")
 			}
 			return strings.Join(items, ", ")
 		}
@@ -469,8 +473,8 @@ func runPlayers(env *Env, server string, _ []string) error {
 		fmt.Fprintf(env.Out, "Online (%d): %s\n", len(r.Online), join(r.Online))
 		fmt.Fprintf(env.Out, "Whitelist:    %s\n", join(wl))
 		fmt.Fprintf(env.Out, "Operators:    %s\n", join(ops))
-		fmt.Fprintf(env.Out, "Bị cấm:       %s\n", join(banned))
-		fmt.Fprintf(env.Out, "IP bị cấm:    %s\n", join(ips))
+		fmt.Fprintf(env.Out, T("Bị cấm:       %s\n"), join(banned))
+		fmt.Fprintf(env.Out, T("IP bị cấm:    %s\n"), join(ips))
 	})
 	return nil
 }
@@ -518,13 +522,13 @@ func runConsole(env *Env, server string, args []string) error {
 			return nil
 		case ev, ok := <-env.Client.Events:
 			if !ok {
-				return errors.New("mất kết nối tới app")
+				return errors.New(T("mất kết nối tới app"))
 			}
 			switch ev.Event {
 			case "console":
 				fmt.Fprintln(env.Out, colorLogLine(ev.Line))
 			case "state":
-				fmt.Fprintln(env.Out, paint("35", "[trạng thái] ")+colorState(ev.State))
+				fmt.Fprintln(env.Out, paint("35", T("[trạng thái] "))+colorState(ev.State))
 			}
 		}
 	}

@@ -1,4 +1,5 @@
 #include "ui/ServerOptionsDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "ui/FluentTheme.hpp"
 #include "ui/FluentWidgets.hpp"
@@ -45,7 +46,7 @@ QWidget* WithBrowse(QLineEdit* edit, QPushButton*& browseOut)
     auto* layout = new QHBoxLayout(box);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(8);
-    browseOut = new QPushButton(QStringLiteral("Chọn..."), box);
+    browseOut = new QPushButton(TR("Chọn..."), box);
     layout->addWidget(edit, 1);
     layout->addWidget(browseOut);
     box->setMinimumWidth(360);
@@ -64,7 +65,7 @@ ServerOptionsDialog::ServerOptionsDialog(
     , serverManager_(std::move(serverManager))
     , configManager_(std::move(configManager))
 {
-    setWindowTitle(QStringLiteral("Cài đặt server — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
+    setWindowTitle(TR("Cài đặt server — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
     resize(760, 640);
 
     auto* root = new QVBoxLayout(this);
@@ -84,28 +85,28 @@ ServerOptionsDialog::ServerOptionsDialog(
 
     AddPageHeader(
         layout,
-        QStringLiteral("Cài đặt server"),
-        QStringLiteral("Áp dụng ở lần Start tiếp theo. Cài đặt gameplay (độ khó, PvP, whitelist...) nằm ở \"server.properties\"."));
+        TR("Cài đặt server"),
+        TR("Áp dụng ở lần Start tiếp theo. Cài đặt gameplay (độ khó, PvP, whitelist...) nằm ở \"server.properties\"."));
     layout->addSpacing(6);
 
     // ---- Cơ bản ----
-    layout->addWidget(MakeSectionLabel(QStringLiteral("CƠ BẢN")));
+    layout->addWidget(MakeSectionLabel(TR("CƠ BẢN")));
     editName_ = new QLineEdit();
     editName_->setMinimumWidth(260);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Tên hiển thị"), QString(), editName_));
+    layout->addWidget(MakeSettingRow(TR("Tên hiển thị"), QString(), editName_));
 
     spinPort_ = new QSpinBox();
     spinPort_->setRange(1, 65535);
     spinPort_->setMinimumWidth(120);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Port"), QStringLiteral("Port này dùng cho nút mở Firewall/Tunnel. Port thật của server nằm ở server.properties."), spinPort_));
+        QStringLiteral("Port"), TR("Port này dùng cho nút mở Firewall/Tunnel. Port thật của server nằm ở server.properties."), spinPort_));
 
     spinMinMemory_ = new QSpinBox();
     spinMinMemory_->setRange(256, 262144);
     spinMinMemory_->setSingleStep(256);
     spinMinMemory_->setSuffix(QStringLiteral(" MB"));
     spinMinMemory_->setMinimumWidth(140);
-    layout->addWidget(MakeSettingRow(QStringLiteral("RAM tối thiểu (-Xms)"), QString(), spinMinMemory_));
+    layout->addWidget(MakeSettingRow(TR("RAM tối thiểu (-Xms)"), QString(), spinMinMemory_));
 
     spinMaxMemory_ = new QSpinBox();
     spinMaxMemory_->setRange(256, 262144);
@@ -113,80 +114,80 @@ ServerOptionsDialog::ServerOptionsDialog(
     spinMaxMemory_->setSuffix(QStringLiteral(" MB"));
     spinMaxMemory_->setMinimumWidth(140);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("RAM tối đa (-Xmx)"), QStringLiteral("Với Aikar's flags nên đặt bằng RAM tối thiểu."), spinMaxMemory_));
+        TR("RAM tối đa (-Xmx)"), TR("Với Aikar's flags nên đặt bằng RAM tối thiểu."), spinMaxMemory_));
 
     editJava_ = new QLineEdit();
     QPushButton* browseJava = nullptr;
-    layout->addWidget(MakeSettingRow(QStringLiteral("Java (java.exe)"), QString(), WithBrowse(editJava_, browseJava)));
+    layout->addWidget(MakeSettingRow(QStringLiteral("Java (java.exe)"), QString(), WithBrowse(editJava_, browseJava), nullptr, true));
     editJar_ = new QLineEdit();
     QPushButton* browseJar = nullptr;
-    layout->addWidget(MakeSettingRow(QStringLiteral("File jar của server"), QString(), WithBrowse(editJar_, browseJar)));
+    layout->addWidget(MakeSettingRow(TR("File jar của server"), QString(), WithBrowse(editJar_, browseJar), nullptr, true));
 
     editMinecraftVersion_ = new QLineEdit();
-    editMinecraftVersion_->setPlaceholderText(QStringLiteral("vd: 1.21.4"));
+    editMinecraftVersion_->setPlaceholderText(TR("vd: 1.21.4"));
     editMinecraftVersion_->setMinimumWidth(140);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Phiên bản Minecraft"),
-        QStringLiteral("Thư viện Mod/Plugin dùng để chọn file tương thích. Để trống = tự dò từ log/tên jar."),
+        TR("Phiên bản Minecraft"),
+        TR("Thư viện Mod/Plugin dùng để chọn file tương thích. Để trống = tự dò từ log/tên jar."),
         editMinecraftVersion_));
 
     // ---- Chạy ----
     layout->addSpacing(10);
-    layout->addWidget(MakeSectionLabel(QStringLiteral("THAM SỐ KHỞI CHẠY")));
+    layout->addWidget(MakeSectionLabel(TR("THAM SỐ KHỞI CHẠY")));
 
     comboJvmPreset_ = new QComboBox();
     for (const auto& preset : kJvmPresets)
     {
-        comboJvmPreset_->addItem(QString::fromUtf8(preset.label));
+        comboJvmPreset_->addItem(i18n::Tr(QString::fromUtf8(preset.label)));
     }
     comboJvmPreset_->setMinimumWidth(360);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Preset JVM flags"), QStringLiteral("Chọn để điền sẵn vào ô tham số JVM bên dưới."), comboJvmPreset_));
+        QStringLiteral("Preset JVM flags"), TR("Chọn để điền sẵn vào ô tham số JVM bên dưới."), comboJvmPreset_, nullptr, true));
 
     editJvmArgs_ = new QLineEdit();
-    editJvmArgs_->setPlaceholderText(QStringLiteral("vd: -XX:+UseG1GC -Dfile.encoding=UTF-8"));
+    editJvmArgs_->setPlaceholderText(TR("vd: -XX:+UseG1GC -Dfile.encoding=UTF-8"));
     editJvmArgs_->setMinimumWidth(360);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Tham số JVM bổ sung"), QStringLiteral("Chèn trước -jar (sau -Xms/-Xmx)."), editJvmArgs_));
+        TR("Tham số JVM bổ sung"), TR("Chèn trước -jar (sau -Xms/-Xmx)."), editJvmArgs_, nullptr, true));
 
     editServerArgs_ = new QLineEdit();
-    editServerArgs_->setPlaceholderText(QStringLiteral("vd: --forceUpgrade --eraseCache"));
+    editServerArgs_->setPlaceholderText(TR("vd: --forceUpgrade --eraseCache"));
     editServerArgs_->setMinimumWidth(360);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Tham số server bổ sung"), QStringLiteral("Thêm sau --nogui."), editServerArgs_));
+        TR("Tham số server bổ sung"), TR("Thêm sau --nogui."), editServerArgs_, nullptr, true));
 
     layout->addWidget(MakeToggleRow(
-        QStringLiteral("Tự khởi động lại khi crash"), QStringLiteral("Tối đa 5 lần trong 10 phút, rồi dừng hẳn."), toggleAutoRestart_));
+        TR("Tự khởi động lại khi crash"), TR("Tối đa 5 lần trong 10 phút, rồi dừng hẳn."), toggleAutoRestart_));
 
     spinStopTimeout_ = new QSpinBox();
     spinStopTimeout_->setRange(5, 600);
-    spinStopTimeout_->setSuffix(QStringLiteral(" giây"));
+    spinStopTimeout_->setSuffix(TR(" giây"));
     spinStopTimeout_->setMinimumWidth(120);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Thời gian chờ khi Stop"),
-        QStringLiteral("Chờ server lưu world và tự thoát; quá thời gian này sẽ bị buộc dừng. World lớn nên đặt cao hơn."),
+        TR("Thời gian chờ khi Stop"),
+        TR("Chờ server lưu world và tự thoát; quá thời gian này sẽ bị buộc dừng. World lớn nên đặt cao hơn."),
         spinStopTimeout_));
 
     // ---- Backup ----
     layout->addSpacing(10);
-    layout->addWidget(MakeSectionLabel(QStringLiteral("BACKUP TỰ ĐỘNG")));
+    layout->addWidget(MakeSectionLabel(TR("BACKUP TỰ ĐỘNG")));
     layout->addWidget(MakeToggleRow(
-        QStringLiteral("Tự backup định kỳ khi server chạy"),
-        QStringLiteral("Dùng save-off + save-all flush trước khi nén nên bản backup luôn nhất quán."),
+        TR("Tự backup định kỳ khi server chạy"),
+        TR("Dùng save-off + save-all flush trước khi nén nên bản backup luôn nhất quán."),
         toggleAutoBackup_));
 
     spinBackupInterval_ = new QSpinBox();
     spinBackupInterval_->setRange(5, 10080);
-    spinBackupInterval_->setSuffix(QStringLiteral(" phút"));
+    spinBackupInterval_->setSuffix(TR(" phút"));
     spinBackupInterval_->setMinimumWidth(130);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Chu kỳ backup"), QString(), spinBackupInterval_));
+    layout->addWidget(MakeSettingRow(TR("Chu kỳ backup"), QString(), spinBackupInterval_));
 
     spinBackupRetention_ = new QSpinBox();
     spinBackupRetention_->setRange(1, 200);
-    spinBackupRetention_->setSuffix(QStringLiteral(" bản"));
+    spinBackupRetention_->setSuffix(TR(" bản"));
     spinBackupRetention_->setMinimumWidth(120);
     layout->addWidget(MakeSettingRow(
-        QStringLiteral("Số bản backup giữ lại"), QStringLiteral("Bản cũ hơn tự bị xoá sau mỗi lần backup."), spinBackupRetention_));
+        TR("Số bản backup giữ lại"), TR("Bản cũ hơn tự bị xoá sau mỗi lần backup."), spinBackupRetention_));
 
     layout->addStretch(1);
 
@@ -196,9 +197,9 @@ ServerOptionsDialog::ServerOptionsDialog(
     labelStatus_->setObjectName(QStringLiteral("hintLabel"));
     labelStatus_->setWordWrap(true);
     footer->addWidget(labelStatus_, 1);
-    auto* saveButton = new QPushButton(QStringLiteral("Lưu"), this);
+    auto* saveButton = new QPushButton(TR("Lưu"), this);
     saveButton->setObjectName(QStringLiteral("btnStart"));
-    auto* closeButton = new QPushButton(QStringLiteral("Đóng"), this);
+    auto* closeButton = new QPushButton(TR("Đóng"), this);
     closeButton->setObjectName(QStringLiteral("btnNeutral"));
     footer->addWidget(saveButton);
     footer->addWidget(closeButton);
@@ -246,7 +247,7 @@ void ServerOptionsDialog::LoadFromConfig()
 
     if (server_->GetState() != core::ServerState::Stopped)
     {
-        labelStatus_->setText(QStringLiteral("Server đang chạy — thay đổi sẽ có hiệu lực sau khi Restart."));
+        labelStatus_->setText(TR("Server đang chạy — thay đổi sẽ có hiệu lực sau khi Restart."));
     }
 }
 
@@ -261,7 +262,7 @@ void ServerOptionsDialog::OnJvmPresetChanged(int index)
 void ServerOptionsDialog::OnBrowseJava()
 {
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn java.exe"), editJava_->text(), QStringLiteral("java.exe (java.exe);;Tất cả (*.*)"));
+        this, TR("Chọn java.exe"), editJava_->text(), TR("java.exe (java.exe);;Tất cả (*.*)"));
     if (!path.isEmpty())
     {
         editJava_->setText(QDir::toNativeSeparators(path));
@@ -272,7 +273,7 @@ void ServerOptionsDialog::OnBrowseJar()
 {
     const QString start = QString::fromStdWString(server_->GetConfig().directory.wstring());
     const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Chọn file jar"), start, QStringLiteral("Jar (*.jar);;Tất cả (*.*)"));
+        this, TR("Chọn file jar"), start, TR("Jar (*.jar);;Tất cả (*.*)"));
     if (!path.isEmpty())
     {
         editJar_->setText(QDir::toNativeSeparators(path));
@@ -283,12 +284,12 @@ void ServerOptionsDialog::OnSaveClicked()
 {
     if (editName_->text().trimmed().isEmpty())
     {
-        labelStatus_->setText(QStringLiteral("Tên server không được để trống."));
+        labelStatus_->setText(TR("Tên server không được để trống."));
         return;
     }
     if (spinMinMemory_->value() > spinMaxMemory_->value())
     {
-        labelStatus_->setText(QStringLiteral("RAM tối thiểu không được lớn hơn RAM tối đa."));
+        labelStatus_->setText(TR("RAM tối thiểu không được lớn hơn RAM tối đa."));
         return;
     }
 
@@ -310,7 +311,7 @@ void ServerOptionsDialog::OnSaveClicked()
 
     server_->UpdateConfig(cfg);
     serverManager_->SaveAll(*configManager_);
-    labelStatus_->setText(QStringLiteral("Đã lưu. Khởi động lại server để áp dụng."));
+    labelStatus_->setText(TR("Đã lưu. Khởi động lại server để áp dụng."));
 }
 
 } // namespace ui

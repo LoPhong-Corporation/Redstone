@@ -1,4 +1,5 @@
 #include "ui/PlayersDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "server/MinecraftServer.hpp"
 #include "ui/FluentTheme.hpp"
@@ -107,7 +108,7 @@ PlayersDialog::PlayersDialog(std::shared_ptr<server::MinecraftServer> server, QW
     : QDialog(parent)
     , server_(std::move(server))
 {
-    setWindowTitle(QStringLiteral("Người chơi — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
+    setWindowTitle(TR("Người chơi — %1").arg(QString::fromStdWString(server_->GetConfig().name)));
     resize(860, 640);
 
     auto* root = new QVBoxLayout(this);
@@ -115,18 +116,18 @@ PlayersDialog::PlayersDialog(std::shared_ptr<server::MinecraftServer> server, QW
     root->setSpacing(10);
 
     auto* header = new QVBoxLayout();
-    AddPageHeader(header, QStringLiteral("Người chơi"), QString());
+    AddPageHeader(header, TR("Người chơi"), QString());
     root->addLayout(header);
     labelSummary_ = new QLabel(this);
     labelSummary_->setObjectName(QStringLiteral("subtitleLabel"));
     root->addWidget(labelSummary_);
 
     auto* tabs = new QTabWidget(this);
-    tabs->addTab(BuildOnlineTab(), QStringLiteral("Đang online"));
+    tabs->addTab(BuildOnlineTab(), TR("Đang online"));
     tabs->addTab(BuildWhitelistTab(), QStringLiteral("Whitelist"));
     tabs->addTab(BuildOpsTab(), QStringLiteral("Operators"));
-    tabs->addTab(BuildBansTab(), QStringLiteral("Bị cấm"));
-    tabs->addTab(BuildQuickTab(), QStringLiteral("Thiết lập nhanh"));
+    tabs->addTab(BuildBansTab(), TR("Bị cấm"));
+    tabs->addTab(BuildQuickTab(), TR("Thiết lập nhanh"));
     root->addWidget(tabs, 1);
 
     auto* footer = new QHBoxLayout();
@@ -134,7 +135,7 @@ PlayersDialog::PlayersDialog(std::shared_ptr<server::MinecraftServer> server, QW
     labelStatus_->setObjectName(QStringLiteral("hintLabel"));
     labelStatus_->setWordWrap(true);
     footer->addWidget(labelStatus_, 1);
-    auto* closeButton = MakeButton(QStringLiteral("Đóng"), "btnNeutral", this);
+    auto* closeButton = MakeButton(TR("Đóng"), "btnNeutral", this);
     footer->addWidget(closeButton);
     root->addLayout(footer);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
@@ -163,16 +164,16 @@ QWidget* PlayersDialog::BuildOnlineTab()
     body->setSpacing(16);
 
     auto* left = new QVBoxLayout();
-    left->addWidget(MakeSectionLabel(QStringLiteral("ĐANG ONLINE")));
+    left->addWidget(MakeSectionLabel(TR("ĐANG ONLINE")));
     listOnline_ = new QListWidget(page);
     left->addWidget(listOnline_, 1);
     body->addLayout(left, 1);
 
     auto* right = new QVBoxLayout();
     right->setSpacing(8);
-    right->addWidget(MakeSectionLabel(QStringLiteral("THAO TÁC")));
+    right->addWidget(MakeSectionLabel(TR("THAO TÁC")));
     editOnlineName_ = new QLineEdit(page);
-    editOnlineName_->setPlaceholderText(QStringLiteral("Chọn trong danh sách hoặc nhập tên..."));
+    editOnlineName_->setPlaceholderText(TR("Chọn trong danh sách hoặc nhập tên..."));
     right->addWidget(editOnlineName_);
 
     auto* opRow = new QHBoxLayout();
@@ -199,12 +200,12 @@ QWidget* PlayersDialog::BuildOnlineTab()
     auto* gmRow = new QHBoxLayout();
     comboGamemode_ = new QComboBox(page);
     comboGamemode_->addItems({QStringLiteral("survival"), QStringLiteral("creative"), QStringLiteral("adventure"), QStringLiteral("spectator")});
-    auto* gmButton = MakeButton(QStringLiteral("Đặt gamemode"), "btnNeutral", page);
+    auto* gmButton = MakeButton(TR("Đặt gamemode"), "btnNeutral", page);
     gmRow->addWidget(comboGamemode_, 1);
     gmRow->addWidget(gmButton);
     right->addLayout(gmRow);
 
-    auto* msgButton = MakeButton(QStringLiteral("Gửi tin nhắn riêng..."), "btnNeutral", page);
+    auto* msgButton = MakeButton(TR("Gửi tin nhắn riêng..."), "btnNeutral", page);
     right->addWidget(msgButton);
     right->addStretch(1);
     body->addLayout(right, 1);
@@ -239,7 +240,7 @@ QWidget* PlayersDialog::BuildOnlineTab()
         if (n.isEmpty()) return;
         bool ok = false;
         const QString reason = QInputDialog::getText(
-            this, QStringLiteral("Kick %1").arg(n), QStringLiteral("Lý do (có thể để trống):"), QLineEdit::Normal, QString(), &ok);
+            this, QStringLiteral("Kick %1").arg(n), TR("Lý do (có thể để trống):"), QLineEdit::Normal, QString(), &ok);
         if (ok) Send(QStringLiteral("kick %1 %2").arg(n, OneLine(reason)));
     });
     connect(banButton, &QPushButton::clicked, this, [this]() {
@@ -247,7 +248,7 @@ QWidget* PlayersDialog::BuildOnlineTab()
         if (n.isEmpty()) return;
         bool ok = false;
         const QString reason = QInputDialog::getText(
-            this, QStringLiteral("Ban %1").arg(n), QStringLiteral("Lý do (có thể để trống):"), QLineEdit::Normal, QString(), &ok);
+            this, QStringLiteral("Ban %1").arg(n), TR("Lý do (có thể để trống):"), QLineEdit::Normal, QString(), &ok);
         if (ok) Send(QStringLiteral("ban %1 %2").arg(n, OneLine(reason)));
     });
     connect(gmButton, &QPushButton::clicked, this, [this]() {
@@ -259,7 +260,7 @@ QWidget* PlayersDialog::BuildOnlineTab()
         if (n.isEmpty()) return;
         bool ok = false;
         const QString text = QInputDialog::getText(
-            this, QStringLiteral("Nhắn cho %1").arg(n), QStringLiteral("Nội dung:"), QLineEdit::Normal, QString(), &ok);
+            this, TR("Nhắn cho %1").arg(n), TR("Nội dung:"), QLineEdit::Normal, QString(), &ok);
         if (ok && !OneLine(text).isEmpty()) Send(QStringLiteral("msg %1 %2").arg(n, OneLine(text)));
     });
     return page;
@@ -272,20 +273,20 @@ QWidget* PlayersDialog::BuildWhitelistTab()
 
     auto* top = new QHBoxLayout();
     editWhitelistName_ = new QLineEdit(page);
-    editWhitelistName_->setPlaceholderText(QStringLiteral("Tên người chơi cần thêm..."));
-    auto* addButton = MakeButton(QStringLiteral("Thêm"), "btnStart", page);
-    auto* removeButton = MakeButton(QStringLiteral("Xoá mục chọn"), "btnNeutral", page);
+    editWhitelistName_->setPlaceholderText(TR("Tên người chơi cần thêm..."));
+    auto* addButton = MakeButton(TR("Thêm"), "btnStart", page);
+    auto* removeButton = MakeButton(TR("Xoá mục chọn"), "btnNeutral", page);
     top->addWidget(editWhitelistName_, 1);
     top->addWidget(addButton);
     top->addWidget(removeButton);
     layout->addLayout(top);
 
-    tableWhitelist_ = MakeTable({QStringLiteral("Tên"), QStringLiteral("UUID")}, page);
+    tableWhitelist_ = MakeTable({TR("Tên"), QStringLiteral("UUID")}, page);
     layout->addWidget(tableWhitelist_, 1);
 
     auto* bottom = new QHBoxLayout();
-    auto* onButton = MakeButton(QStringLiteral("Bật whitelist"), "btnNeutral", page);
-    auto* offButton = MakeButton(QStringLiteral("Tắt whitelist"), "btnNeutral", page);
+    auto* onButton = MakeButton(TR("Bật whitelist"), "btnNeutral", page);
+    auto* offButton = MakeButton(TR("Tắt whitelist"), "btnNeutral", page);
     auto* reloadButton = MakeButton(QStringLiteral("Reload"), "btnNeutral", page);
     bottom->addWidget(onButton);
     bottom->addWidget(offButton);
@@ -316,19 +317,19 @@ QWidget* PlayersDialog::BuildOpsTab()
 
     auto* top = new QHBoxLayout();
     editOpName_ = new QLineEdit(page);
-    editOpName_->setPlaceholderText(QStringLiteral("Tên người chơi cần cấp OP..."));
+    editOpName_->setPlaceholderText(TR("Tên người chơi cần cấp OP..."));
     auto* addButton = MakeButton(QStringLiteral("Op"), "btnStart", page);
-    auto* removeButton = MakeButton(QStringLiteral("Deop mục chọn"), "btnNeutral", page);
+    auto* removeButton = MakeButton(TR("Deop mục chọn"), "btnNeutral", page);
     top->addWidget(editOpName_, 1);
     top->addWidget(addButton);
     top->addWidget(removeButton);
     layout->addLayout(top);
 
-    tableOps_ = MakeTable({QStringLiteral("Tên"), QStringLiteral("Cấp quyền"), QStringLiteral("Bỏ qua giới hạn người chơi")}, page);
+    tableOps_ = MakeTable({TR("Tên"), TR("Cấp quyền"), TR("Bỏ qua giới hạn người chơi")}, page);
     layout->addWidget(tableOps_, 1);
 
     auto* hint = new QLabel(
-        QStringLiteral("Cấp quyền mặc định của OP mới đặt trong server.properties (op-permission-level). "
+        TR("Cấp quyền mặc định của OP mới đặt trong server.properties (op-permission-level). "
                        "Muốn đổi cấp riêng từng người, sửa ops.json khi server đang tắt."),
         page);
     hint->setObjectName(QStringLiteral("hintLabel"));
@@ -354,20 +355,20 @@ QWidget* PlayersDialog::BuildBansTab()
 
     auto* top = new QHBoxLayout();
     editBanTarget_ = new QLineEdit(page);
-    editBanTarget_->setPlaceholderText(QStringLiteral("Tên người chơi hoặc địa chỉ IP..."));
+    editBanTarget_->setPlaceholderText(TR("Tên người chơi hoặc địa chỉ IP..."));
     editBanReason_ = new QLineEdit(page);
-    editBanReason_->setPlaceholderText(QStringLiteral("Lý do (tuỳ chọn)"));
+    editBanReason_->setPlaceholderText(TR("Lý do (tuỳ chọn)"));
     auto* banButton = MakeButton(QStringLiteral("Ban"), "btnStop", page);
     top->addWidget(editBanTarget_, 2);
     top->addWidget(editBanReason_, 2);
     top->addWidget(banButton);
     layout->addLayout(top);
 
-    tableBans_ = MakeTable({QStringLiteral("Đối tượng"), QStringLiteral("Loại"), QStringLiteral("Lý do"), QStringLiteral("Ngày cấm"), QStringLiteral("Bởi")}, page);
+    tableBans_ = MakeTable({TR("Đối tượng"), TR("Loại"), TR("Lý do"), TR("Ngày cấm"), TR("Bởi")}, page);
     layout->addWidget(tableBans_, 1);
 
     auto* bottom = new QHBoxLayout();
-    auto* unbanButton = MakeButton(QStringLiteral("Gỡ cấm mục chọn"), "btnStart", page);
+    auto* unbanButton = MakeButton(TR("Gỡ cấm mục chọn"), "btnStart", page);
     bottom->addWidget(unbanButton);
     bottom->addStretch(1);
     layout->addLayout(bottom);
@@ -397,7 +398,7 @@ QWidget* PlayersDialog::BuildBansTab()
         const QString type = SelectedCell(tableBans_, 1);
         if (target.isEmpty())
         {
-            SetStatus(QStringLiteral("Chọn một dòng trong danh sách trước."));
+            SetStatus(TR("Chọn một dòng trong danh sách trước."));
             return;
         }
         if (type == QStringLiteral("IP"))
@@ -420,57 +421,57 @@ QWidget* PlayersDialog::BuildQuickTab()
     QWidget* page = TabPage(layout);
 
     editBroadcast_ = new QLineEdit();
-    editBroadcast_->setPlaceholderText(QStringLiteral("Nội dung thông báo tới toàn server..."));
+    editBroadcast_->setPlaceholderText(TR("Nội dung thông báo tới toàn server..."));
     editBroadcast_->setMinimumWidth(260);
-    auto* sendButton = MakeButton(QStringLiteral("Gửi"), "btnStart", page);
+    auto* sendButton = MakeButton(TR("Gửi"), "btnStart", page);
     auto* broadcastBox = new QWidget();
     auto* broadcastLayout = new QHBoxLayout(broadcastBox);
     broadcastLayout->setContentsMargins(0, 0, 0, 0);
     broadcastLayout->addWidget(editBroadcast_, 1);
     broadcastLayout->addWidget(sendButton);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Thông báo toàn server"), QStringLiteral("Gửi bằng lệnh say, hiện trong chat cho mọi người."), broadcastBox));
+    layout->addWidget(MakeSettingRow(TR("Thông báo toàn server"), TR("Gửi bằng lệnh say, hiện trong chat cho mọi người."), broadcastBox));
 
     comboDefaultGamemode_ = new QComboBox();
     comboDefaultGamemode_->addItems({QStringLiteral("survival"), QStringLiteral("creative"), QStringLiteral("adventure"), QStringLiteral("spectator")});
-    auto* gmApply = MakeButton(QStringLiteral("Áp dụng"), "btnNeutral", page);
+    auto* gmApply = MakeButton(TR("Áp dụng"), "btnNeutral", page);
     auto* gmBox = new QWidget();
     auto* gmLayout = new QHBoxLayout(gmBox);
     gmLayout->setContentsMargins(0, 0, 0, 0);
     gmLayout->addWidget(comboDefaultGamemode_);
     gmLayout->addWidget(gmApply);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Gamemode mặc định cho người mới"), QStringLiteral("Có hiệu lực ngay, không cần restart (lệnh defaultgamemode)."), gmBox));
+    layout->addWidget(MakeSettingRow(TR("Gamemode mặc định cho người mới"), TR("Có hiệu lực ngay, không cần restart (lệnh defaultgamemode)."), gmBox));
 
     comboDifficulty_ = new QComboBox();
     comboDifficulty_->addItems({QStringLiteral("peaceful"), QStringLiteral("easy"), QStringLiteral("normal"), QStringLiteral("hard")});
-    auto* diffApply = MakeButton(QStringLiteral("Áp dụng"), "btnNeutral", page);
+    auto* diffApply = MakeButton(TR("Áp dụng"), "btnNeutral", page);
     auto* diffBox = new QWidget();
     auto* diffLayout = new QHBoxLayout(diffBox);
     diffLayout->setContentsMargins(0, 0, 0, 0);
     diffLayout->addWidget(comboDifficulty_);
     diffLayout->addWidget(diffApply);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Độ khó"), QStringLiteral("Đổi ngay trong game (nhớ lưu vào server.properties nếu muốn giữ lâu dài)."), diffBox));
+    layout->addWidget(MakeSettingRow(TR("Độ khó"), TR("Đổi ngay trong game (nhớ lưu vào server.properties nếu muốn giữ lâu dài)."), diffBox));
 
     spinIdleTimeout_ = new QSpinBox();
     spinIdleTimeout_->setRange(0, 1440);
-    spinIdleTimeout_->setSuffix(QStringLiteral(" phút"));
-    auto* idleApply = MakeButton(QStringLiteral("Áp dụng"), "btnNeutral", page);
+    spinIdleTimeout_->setSuffix(TR(" phút"));
+    auto* idleApply = MakeButton(TR("Áp dụng"), "btnNeutral", page);
     auto* idleBox = new QWidget();
     auto* idleLayout = new QHBoxLayout(idleBox);
     idleLayout->setContentsMargins(0, 0, 0, 0);
     idleLayout->addWidget(spinIdleTimeout_);
     idleLayout->addWidget(idleApply);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Kick người chơi AFK"), QStringLiteral("0 = không kick."), idleBox));
+    layout->addWidget(MakeSettingRow(TR("Kick người chơi AFK"), TR("0 = không kick."), idleBox));
 
     auto* worldBox = new QWidget();
     auto* worldLayout = new QHBoxLayout(worldBox);
     worldLayout->setContentsMargins(0, 0, 0, 0);
-    auto* dayButton = MakeButton(QStringLiteral("Ban ngày"), "btnNeutral", page);
-    auto* nightButton = MakeButton(QStringLiteral("Ban đêm"), "btnNeutral", page);
-    auto* clearButton = MakeButton(QStringLiteral("Trời quang"), "btnNeutral", page);
+    auto* dayButton = MakeButton(TR("Ban ngày"), "btnNeutral", page);
+    auto* nightButton = MakeButton(TR("Ban đêm"), "btnNeutral", page);
+    auto* clearButton = MakeButton(TR("Trời quang"), "btnNeutral", page);
     worldLayout->addWidget(dayButton);
     worldLayout->addWidget(nightButton);
     worldLayout->addWidget(clearButton);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Thời gian & thời tiết"), QString(), worldBox));
+    layout->addWidget(MakeSettingRow(TR("Thời gian & thời tiết"), QString(), worldBox));
 
     layout->addStretch(1);
 
@@ -506,7 +507,7 @@ QString PlayersDialog::RequirePlayerName(const QString& raw)
     const QString name = raw.trimmed();
     if (!pattern.match(name).hasMatch())
     {
-        SetStatus(QStringLiteral("Tên người chơi không hợp lệ (chỉ gồm chữ, số, _ hoặc .)."));
+        SetStatus(TR("Tên người chơi không hợp lệ (chỉ gồm chữ, số, _ hoặc .)."));
         return QString();
     }
     return name;
@@ -516,10 +517,10 @@ bool PlayersDialog::Send(const QString& command)
 {
     if (!server_->SendCommand(command.trimmed().toStdWString()))
     {
-        SetStatus(QStringLiteral("Không gửi được — server chưa chạy. Hãy Start server rồi thử lại."));
+        SetStatus(TR("Không gửi được — server chưa chạy. Hãy Start server rồi thử lại."));
         return false;
     }
-    SetStatus(QStringLiteral("Đã gửi: %1").arg(command.trimmed()));
+    SetStatus(TR("Đã gửi: %1").arg(command.trimmed()));
     // Minecraft rewrites the JSON lists a moment after the command executes.
     QTimer::singleShot(1200, this, [this]() { RefreshFiles(); });
     return true;
@@ -534,7 +535,7 @@ void PlayersDialog::UpdateEnabledState()
     }
     if (!running && labelStatus_->text().isEmpty())
     {
-        SetStatus(QStringLiteral("Server chưa chạy — chỉ xem được danh sách; các thao tác sẽ bật khi server Running."));
+        SetStatus(TR("Server chưa chạy — chỉ xem được danh sách; các thao tác sẽ bật khi server Running."));
     }
 }
 
@@ -556,7 +557,7 @@ void PlayersDialog::RefreshOnline()
     }
     listOnline_->blockSignals(false);
 
-    labelSummary_->setText(QStringLiteral("%1 người đang online").arg(players.size()));
+    labelSummary_->setText(TR("%1 người đang online").arg(players.size()));
 }
 
 void PlayersDialog::RefreshFiles()
@@ -577,7 +578,7 @@ void PlayersDialog::RefreshFiles()
         const QJsonObject o = v.toObject();
         rows.append({o.value(QStringLiteral("name")).toString(),
                      QString::number(o.value(QStringLiteral("level")).toInt()),
-                     o.value(QStringLiteral("bypassesPlayerLimit")).toBool() ? QStringLiteral("Có") : QStringLiteral("Không")});
+                     o.value(QStringLiteral("bypassesPlayerLimit")).toBool() ? TR("Có") : TR("Không")});
     }
     FillTable(tableOps_, rows);
 
@@ -585,7 +586,7 @@ void PlayersDialog::RefreshFiles()
     for (const auto& v : ReadJsonArray(cfg, L"banned-players.json"))
     {
         const QJsonObject o = v.toObject();
-        rows.append({o.value(QStringLiteral("name")).toString(), QStringLiteral("Người chơi"),
+        rows.append({o.value(QStringLiteral("name")).toString(), TR("Người chơi"),
                      o.value(QStringLiteral("reason")).toString(), o.value(QStringLiteral("created")).toString(),
                      o.value(QStringLiteral("source")).toString()});
     }

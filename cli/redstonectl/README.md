@@ -37,4 +37,7 @@ redstonectl shell Survival                                # phiên tương tác,
 Cấu hình kết nối theo thứ tự ưu tiên: cờ dòng lệnh > biến môi trường (`REDSTONE_TOKEN`, `REDSTONE_SSH`, ...) >
 profile (`%AppData%\redstonectl\config.json` hoặc `~/.config/redstonectl/config.json`, quyền 0600). `redstonectl help` liệt kê hết.
 
+Thêm: logo ASCII (`redstonectl banner`), màu (tắt: `--no-color`/`NO_COLOR`), `--lang vi|en`, `--yes`.
+Nếu máy chưa có OpenSSH Client, `--ssh` sẽ hỏi và cài giúp (Windows: `Add-WindowsCapability` qua UAC; Linux: apt/dnf/yum/pacman/zypper/apk).
+
 Mã thoát: 0 thành công, 1 lỗi, 2 sai cú pháp.

@@ -1,4 +1,5 @@
 #include "ui/FileEditorDialog.hpp"
+#include "ui/I18n.hpp"
 
 #include "core/StringUtil.hpp"
 
@@ -19,7 +20,7 @@ FileEditorDialog::FileEditorDialog(std::filesystem::path filePath, QWidget* pare
     : QDialog(parent)
     , filePath_(std::move(filePath))
 {
-    setWindowTitle(QStringLiteral("Sửa file — %1").arg(QString::fromStdWString(filePath_.filename().wstring())));
+    setWindowTitle(TR("Sửa file — %1").arg(QString::fromStdWString(filePath_.filename().wstring())));
     resize(720, 560);
 
     auto* layout = new QVBoxLayout(this);
@@ -41,11 +42,11 @@ FileEditorDialog::FileEditorDialog(std::filesystem::path filePath, QWidget* pare
     layout->addWidget(labelStatus_);
 
     auto* buttons = new QDialogButtonBox(this);
-    auto* reloadButton = buttons->addButton(QStringLiteral("Tải lại"), QDialogButtonBox::ResetRole);
+    auto* reloadButton = buttons->addButton(TR("Tải lại"), QDialogButtonBox::ResetRole);
     reloadButton->setObjectName(QStringLiteral("btnNeutral"));
-    auto* saveButton = buttons->addButton(QStringLiteral("Lưu"), QDialogButtonBox::AcceptRole);
+    auto* saveButton = buttons->addButton(TR("Lưu"), QDialogButtonBox::AcceptRole);
     saveButton->setObjectName(QStringLiteral("btnStart"));
-    auto* closeButton = buttons->addButton(QStringLiteral("Đóng"), QDialogButtonBox::RejectRole);
+    auto* closeButton = buttons->addButton(TR("Đóng"), QDialogButtonBox::RejectRole);
     closeButton->setObjectName(QStringLiteral("btnNeutral"));
     connect(reloadButton, &QPushButton::clicked, this, &FileEditorDialog::OnReloadClicked);
     connect(saveButton, &QPushButton::clicked, this, &FileEditorDialog::OnSaveClicked);
@@ -60,7 +61,7 @@ void FileEditorDialog::LoadFile()
     std::ifstream file(filePath_, std::ios::binary);
     if (!file.is_open())
     {
-        labelStatus_->setText(QStringLiteral("Không mở được file (chưa tồn tại?). Gõ nội dung rồi bấm Lưu để tạo mới."));
+        labelStatus_->setText(TR("Không mở được file (chưa tồn tại?). Gõ nội dung rồi bấm Lưu để tạo mới."));
         editor_->setPlainText(QString());
         return;
     }
@@ -89,11 +90,11 @@ void FileEditorDialog::OnSaveClicked()
     std::ofstream out(filePath_, std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {
-        labelStatus_->setText(QStringLiteral("Lỗi: không ghi được file."));
+        labelStatus_->setText(TR("Lỗi: không ghi được file."));
         return;
     }
     out.write(utf8.data(), static_cast<std::streamsize>(utf8.size()));
-    labelStatus_->setText(QStringLiteral("Đã lưu. Có thể cần khởi động lại server/plugin để áp dụng."));
+    labelStatus_->setText(TR("Đã lưu. Có thể cần khởi động lại server/plugin để áp dụng."));
 }
 
 } // namespace ui

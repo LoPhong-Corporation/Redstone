@@ -52,7 +52,7 @@ func LoadConfig() (*ConfigFile, error) {
 		return nil, err
 	}
 	if err := json.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("file cấu hình %s bị lỗi: %w", path, err)
+		return nil, fmt.Errorf(T("file cấu hình %s bị lỗi: %w"), path, err)
 	}
 	if cfg.Profiles == nil {
 		cfg.Profiles = map[string]Profile{}

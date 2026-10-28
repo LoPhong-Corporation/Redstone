@@ -65,7 +65,7 @@ type Client struct {
 func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("không kết nối được tới %s: %w (app Redstone đã bật \"Điều khiển từ xa\" chưa?)", addr, err)
+		return nil, fmt.Errorf(T("không kết nối được tới %s: %w (app Redstone đã bật \"Điều khiển từ xa\" chưa?)"), addr, err)
 	}
 	r := bufio.NewReaderSize(conn, 1<<20)
 
@@ -73,7 +73,7 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 	line, err := r.ReadBytes('\n')
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("app đóng kết nối ngay khi vừa mở (%v) - có thể đang bị khoá 30 giây sau nhiều lần sai token, hoặc đã đủ số phiên tối đa, hoặc port này không phải Redstone", err)
+		return nil, fmt.Errorf(T("app đóng kết nối ngay khi vừa mở (%v) - có thể đang bị khoá 30 giây sau nhiều lần sai token, hoặc đã đủ số phiên tối đa, hoặc port này không phải Redstone"), err)
 	}
 	var hello struct {
 		Type     string `json:"type"`
@@ -82,11 +82,11 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 	}
 	if err := json.Unmarshal(line, &hello); err != nil || hello.Type != "hello" || hello.Nonce == "" {
 		conn.Close()
-		return nil, errors.New("server không phải Redstone hoặc gửi lời chào không hợp lệ")
+		return nil, errors.New(T("server không phải Redstone hoặc gửi lời chào không hợp lệ"))
 	}
 	if hello.Protocol != protocolVersion {
 		conn.Close()
-		return nil, fmt.Errorf("khác phiên bản giao thức (app: %d, CLI: %d) - hãy cập nhật cả hai", hello.Protocol, protocolVersion)
+		return nil, fmt.Errorf(T("khác phiên bản giao thức (app: %d, CLI: %d) - hãy cập nhật cả hai"), hello.Protocol, protocolVersion)
 	}
 
 	auth, _ := json.Marshal(map[string]string{"cmd": "auth", "proof": ComputeProof(token, hello.Nonce)})
@@ -97,7 +97,7 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 	line, err = r.ReadBytes('\n')
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("xác thực thất bại: %w", err)
+		return nil, fmt.Errorf(T("xác thực thất bại: %w"), err)
 	}
 	var ar struct {
 		OK    bool   `json:"ok"`
@@ -107,9 +107,9 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 		conn.Close()
 		msg := ar.Error
 		if msg == "" {
-			msg = "bị từ chối"
+			msg = T("bị từ chối")
 		}
-		return nil, fmt.Errorf("xác thực thất bại: %s", msg)
+		return nil, fmt.Errorf(T("xác thực thất bại: %s"), msg)
 	}
 	_ = conn.SetDeadline(time.Time{})
 
@@ -187,7 +187,7 @@ func (c *Client) Call(cmd string, params map[string]any, timeout time.Duration) 
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
-		return nil, errors.New("kết nối đã đóng")
+		return nil, errors.New(T("kết nối đã đóng"))
 	}
 	c.nextID++
 	id := c.nextID
@@ -213,7 +213,7 @@ func (c *Client) Call(cmd string, params map[string]any, timeout time.Duration) 
 	select {
 	case resp, ok := <-ch:
 		if !ok {
-			return nil, errors.New("mất kết nối tới app")
+			return nil, errors.New(T("mất kết nối tới app"))
 		}
 		if !resp.OK {
 			return nil, &RemoteError{Message: resp.Error}
@@ -223,6 +223,6 @@ func (c *Client) Call(cmd string, params map[string]any, timeout time.Duration) 
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
-		return nil, fmt.Errorf("quá thời gian chờ phản hồi cho lệnh %q (%s)", cmd, timeout)
+		return nil, fmt.Errorf(T("quá thời gian chờ phản hồi cho lệnh %q (%s)"), cmd, timeout)
 	}
 }

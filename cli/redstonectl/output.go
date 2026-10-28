@@ -1,27 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 	"text/tabwriter"
 )
 
 var useColor = false
-
-func initColor(noColorFlag bool) {
-	if noColorFlag || os.Getenv("NO_COLOR") != "" {
-		return
-	}
-	fi, err := os.Stdout.Stat()
-	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
-		return
-	}
-	useColor = enableVirtualTerminal()
-}
 
 func paint(code, s string) string {
 	if !useColor {
@@ -60,16 +47,6 @@ func colorLogLine(line string) string {
 	return line
 }
 
-func printJSON(w io.Writer, raw json.RawMessage) {
-	var v any
-	if json.Unmarshal(raw, &v) != nil {
-		fmt.Fprintln(w, string(raw))
-		return
-	}
-	out, _ := json.MarshalIndent(v, "", "  ")
-	fmt.Fprintln(w, string(out))
-}
-
 type serverInfo struct {
 	ID               string   `json:"id"`
 	Name             string   `json:"name"`
@@ -87,7 +64,7 @@ type serverInfo struct {
 
 func printServerTable(w io.Writer, servers []serverInfo) {
 	if len(servers) == 0 {
-		fmt.Fprintln(w, "Chưa có server nào trong app.")
+		fmt.Fprintln(w, T("Chưa có server nào trong app."))
 		return
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
@@ -110,18 +87,18 @@ func max0(n int) int {
 
 func printStatus(w io.Writer, s serverInfo) {
 	kv := func(k, v string) { fmt.Fprintf(w, "%-18s %s\n", k+":", v) }
-	kv("Tên", s.Name)
+	kv(T("Tên"), s.Name)
 	kv("ID", s.ID)
-	kv("Trạng thái", colorState(s.State))
-	kv("Loại", s.Type)
+	kv(T("Trạng thái"), colorState(s.State))
+	kv(T("Loại"), s.Type)
 	if s.MinecraftVersion != "" {
 		kv("Minecraft", s.MinecraftVersion)
 	}
 	kv("Port", fmt.Sprint(s.Port))
 	kv("RAM (Xms/Xmx)", fmt.Sprintf("%.0f / %.0f MB", s.MinMemoryMB, s.MaxMemoryMB))
-	kv("Tự restart khi crash", yesNo(s.AutoRestart))
-	kv("Backup tự động", yesNo(s.AutoBackup))
-	players := "(không ai)"
+	kv(T("Tự restart khi crash"), yesNo(s.AutoRestart))
+	kv(T("Backup tự động"), yesNo(s.AutoBackup))
+	players := T("(không ai)")
 	if len(s.Players) > 0 {
 		players = strings.Join(s.Players, ", ")
 	}
@@ -130,9 +107,9 @@ func printStatus(w io.Writer, s serverInfo) {
 
 func yesNo(b bool) string {
 	if b {
-		return "bật"
+		return T("bật")
 	}
-	return "tắt"
+	return T("tắt")
 }
 
 func sortedKeys(m map[string]string) []string {
