@@ -330,3 +330,5 @@ src/
                   InstalledAddonsDialog, AdvancedSettingsDialog (tunnel + scheduled restart +
                   auto-start-with-app), AppSettingsDialog (khởi động cùng Windows), LibraryDialog
 ```
+
+Made with ❤️ by LoPhong Corporation and Claude
