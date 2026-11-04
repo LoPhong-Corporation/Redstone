@@ -23,10 +23,12 @@
 // Full wire format: docs/REMOTE_PROTOCOL.md
 
 #include "core/EventDispatcher.hpp"
+#include "remote/Access.hpp"
 #include "server/ServerManager.hpp"
 
 #include <QHash>
 #include <QJsonObject>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -45,7 +47,7 @@ class RemoteControlServer : public QObject
     Q_OBJECT
 
 public:
-    static constexpr int kProtocolVersion = 1;
+    static constexpr int kProtocolVersion = 2; // v2: per-account authentication (see Access.hpp)
 
     RemoteControlServer(
         std::shared_ptr<server::ServerManager> serverManager,
@@ -53,11 +55,14 @@ public:
         QObject* parent = nullptr);
     ~RemoteControlServer() override;
 
-    // Starts listening on 127.0.0.1:port. Returns false and fills `error` on failure.
-    bool Start(quint16 port, const QString& token, QString* error);
+    // Starts listening on 127.0.0.1:port with the given accounts. Returns false and fills `error` on failure.
+    bool Start(quint16 port, const QList<Account>& accounts, QString* error);
     void Stop();
     [[nodiscard]] bool IsListening() const;
     [[nodiscard]] quint16 Port() const;
+
+    // Last `lines` lines of data/remote_audit.log (newest last); empty if there is none.
+    [[nodiscard]] static QStringList ReadAuditTail(int lines);
 
     // 256-bit random token as 64 hex characters.
     [[nodiscard]] static QString GenerateToken();
@@ -70,6 +75,8 @@ private:
         QByteArray buffer;
         QString nonce;
         bool authenticated = false;
+        Account account; // who this session is (valid once authenticated)
+        QString language; // language the client asked for; its error messages are translated into it
         bool subscribed = false;
         QString subscribedServerId; // empty = every server
         QTimer* authTimeout = nullptr;
@@ -80,6 +87,8 @@ private:
         bool ok = true;
         QJsonObject data;
         QString error;
+        QString code;          // "forbidden" for permission errors
+        QString requiredRole;  // set with code == "forbidden"
         bool deferred = false; // a worker thread will reply later
     };
 
@@ -102,11 +111,16 @@ private:
     Result CmdProps(const std::shared_ptr<server::MinecraftServer>& srv, const QJsonObject& request, bool set) const;
     Result CmdBackup(QTcpSocket* socket, const std::shared_ptr<server::MinecraftServer>& srv, qint64 id);
     Result CmdBackups(const std::shared_ptr<server::MinecraftServer>& srv) const;
+    Result CmdWhoAmI(const Account& account) const;
+    Result CmdApp(const Account& account) const;
+    Result CmdAudit(const QJsonObject& request) const;
+    void Audit(const Client& client, const QString& cmd, const QJsonObject& request, const QString& outcome);
 
     std::shared_ptr<server::ServerManager> serverManager_;
     std::shared_ptr<core::EventDispatcher> events_;
     QTcpServer* listener_ = nullptr;
-    QString token_;
+    QList<Account> accounts_;
+    QElapsedTimer uptime_;
     QHash<QTcpSocket*, Client> clients_;
 
     int consecutiveAuthFailures_ = 0;

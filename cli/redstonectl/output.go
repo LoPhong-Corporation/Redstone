@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 )
 
 var useColor = false
@@ -48,68 +48,67 @@ func colorLogLine(line string) string {
 }
 
 type serverInfo struct {
-	ID               string   `json:"id"`
-	Name             string   `json:"name"`
-	Type             string   `json:"type"`
-	State            string   `json:"state"`
-	Port             int      `json:"port"`
-	PlayersOnline    int      `json:"playersOnline"`
-	MinecraftVersion string   `json:"minecraftVersion"`
-	MinMemoryMB      float64  `json:"minMemoryMB"`
-	MaxMemoryMB      float64  `json:"maxMemoryMB"`
-	AutoRestart      bool     `json:"autoRestart"`
-	AutoBackup       bool     `json:"autoBackup"`
-	Players          []string `json:"players"`
+	ID                        string   `json:"id"`
+	Name                      string   `json:"name"`
+	Type                      string   `json:"type"`
+	State                     string   `json:"state"`
+	Port                      int      `json:"port"`
+	PlayersOnline             int      `json:"playersOnline"`
+	MinecraftVersion          string   `json:"minecraftVersion"`
+	MinMemoryMB               float64  `json:"minMemoryMB"`
+	MaxMemoryMB               float64  `json:"maxMemoryMB"`
+	AutoRestart               bool     `json:"autoRestart"`
+	AutoBackup                bool     `json:"autoBackup"`
+	AutoStartOnAppLaunch      bool     `json:"autoStartOnAppLaunch"`
+	AutoBackupIntervalMinutes int      `json:"autoBackupIntervalMinutes"`
+	BackupRetention           int      `json:"backupRetention"`
+	StopTimeoutSeconds        int      `json:"stopTimeoutSeconds"`
+	Players                   []string `json:"players"`
 }
 
 func printServerTable(w io.Writer, servers []serverInfo) {
 	if len(servers) == 0 {
-		fmt.Fprintln(w, T("Chưa có server nào trong app."))
+		fmt.Fprintln(w, dim(T("Chưa có server nào trong app (hoặc tài khoản này không được phép thấy).")))
 		return
 	}
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tTYPE\tSTATE\tPORT\tPLAYERS\tID")
+	rows := make([][]string, 0, len(servers))
+	running, players := 0, 0
 	for _, s := range servers {
-		// tabwriter counts escape bytes, so pad the coloured cell manually.
-		state := s.State
-		pad := strings.Repeat(" ", max0(10-len(state)))
-		fmt.Fprintf(tw, "%s\t%s\t%s%s\t%d\t%d\t%s\n", s.Name, s.Type, colorState(state), pad, s.Port, s.PlayersOnline, s.ID)
+		if s.State == "Running" {
+			running++
+		}
+		players += s.PlayersOnline
+		rows = append(rows, []string{bold(s.Name), s.Type, stateBadge(s.State), firstNonEmpty(s.MinecraftVersion, dim("-")), strconv.Itoa(s.Port), strconv.Itoa(s.PlayersOnline), dim(s.ID)})
 	}
-	tw.Flush()
-}
-
-func max0(n int) int {
-	if n < 0 {
-		return 0
-	}
-	return n
+	printTable(w, []string{"NAME", "TYPE", "STATE", "MC", "PORT", "PLAYERS", "ID"}, rows)
+	fmt.Fprintf(w, "\n  %s\n", dim(fmt.Sprintf(T("%d server · %d đang chạy · %d người chơi"), len(servers), running, players)))
 }
 
 func printStatus(w io.Writer, s serverInfo) {
-	kv := func(k, v string) { fmt.Fprintf(w, "%-18s %s\n", k+":", v) }
-	kv(T("Tên"), s.Name)
-	kv("ID", s.ID)
-	kv(T("Trạng thái"), colorState(s.State))
-	kv(T("Loại"), s.Type)
-	if s.MinecraftVersion != "" {
-		kv("Minecraft", s.MinecraftVersion)
-	}
-	kv("Port", fmt.Sprint(s.Port))
-	kv("RAM (Xms/Xmx)", fmt.Sprintf("%.0f / %.0f MB", s.MinMemoryMB, s.MaxMemoryMB))
-	kv(T("Tự restart khi crash"), yesNo(s.AutoRestart))
-	kv(T("Backup tự động"), yesNo(s.AutoBackup))
-	players := T("(không ai)")
+	players := dim(T("(không ai)"))
 	if len(s.Players) > 0 {
 		players = strings.Join(s.Players, ", ")
 	}
-	kv(fmt.Sprintf("Online (%d)", s.PlayersOnline), players)
-}
-
-func yesNo(b bool) string {
-	if b {
-		return T("bật")
+	mc := firstNonEmpty(s.MinecraftVersion, dim("?"))
+	printBox(w, s.Name, []row{
+		{T("Trạng thái"), stateBadge(s.State)},
+		{T("Loại"), fmt.Sprintf("%s · Minecraft %s", s.Type, mc)},
+		{"Port", strconv.Itoa(s.Port)},
+		{T("RAM (Xms/Xmx)"), fmt.Sprintf("%.0f / %.0f MB", s.MinMemoryMB, s.MaxMemoryMB)},
+		{fmt.Sprintf(T("Online (%d)"), s.PlayersOnline), players},
+		{"ID", dim(s.ID)},
+	})
+	fmt.Fprintln(w)
+	backup := yesNoColor(s.AutoBackup)
+	if s.AutoBackup {
+		backup += dim(fmt.Sprintf(T(" · mỗi %d phút · giữ %d bản"), s.AutoBackupIntervalMinutes, s.BackupRetention))
 	}
-	return T("tắt")
+	printBox(w, T("Tự động hoá"), []row{
+		{T("Tự restart khi crash"), yesNoColor(s.AutoRestart)},
+		{T("Backup tự động"), backup},
+		{T("Tự Start cùng app"), yesNoColor(s.AutoStartOnAppLaunch)},
+		{T("Chờ khi Stop"), fmt.Sprintf("%d s", s.StopTimeoutSeconds)},
+	})
 }
 
 func sortedKeys(m map[string]string) []string {
@@ -119,4 +118,11 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func yesNo(b bool) string {
+	if b {
+		return T("bật")
+	}
+	return T("tắt")
 }

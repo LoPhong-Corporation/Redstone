@@ -4,7 +4,12 @@
 #include "backup/BackupManager.hpp"
 #include "config/ServerProperties.hpp"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+#include <QSet>
+#include <QTextStream>
 #include <QFile>
 #include <QHostAddress>
 #include <QJsonArray>
@@ -21,6 +26,17 @@
 
 namespace remote
 {
+namespace
+{
+// Language of the session currently being served. The endpoint runs on the UI thread, so one
+// variable is enough; it is set from the client's "lang" before every request is handled.
+QString g_sessionLanguage;
+} // namespace
+
+// Messages in this file go to the remote client, so translate them into ITS language.
+#undef TR
+#define TR(text) ::i18n::TrIn(g_sessionLanguage, QStringLiteral(text))
+
 namespace
 {
 
@@ -104,6 +120,8 @@ RemoteControlServer::RemoteControlServer(
     , serverManager_(std::move(serverManager))
     , events_(std::move(events))
 {
+    uptime_.start();
+
     // The dispatcher calls handlers on arbitrary threads (and has no
     // Unsubscribe), so hop to the UI thread through a guarded pointer.
     QPointer<RemoteControlServer> self(this);
@@ -138,15 +156,35 @@ QString RemoteControlServer::ComputeProof(const QString& token, const QString& n
     return QString::fromLatin1(mac.toHex());
 }
 
-bool RemoteControlServer::Start(quint16 port, const QString& token, QString* error)
+bool RemoteControlServer::Start(quint16 port, const QList<Account>& accounts, QString* error)
 {
     Stop();
-    if (token.size() < 16)
+    if (accounts.isEmpty())
     {
-        if (error != nullptr) *error = TR("Token quá ngắn (cần ít nhất 16 ký tự).");
+        if (error != nullptr) *error = TR("Chưa có tài khoản truy cập nào.");
         return false;
     }
-    token_ = token;
+    QSet<QString> names;
+    for (const Account& a : accounts)
+    {
+        if (!ValidAccountName(a.name))
+        {
+            if (error != nullptr) *error = TR("Tên tài khoản không hợp lệ: %1").arg(a.name);
+            return false;
+        }
+        if (a.secret.size() < 16)
+        {
+            if (error != nullptr) *error = TR("Token của \"%1\" quá ngắn (cần ít nhất 16 ký tự).").arg(a.name);
+            return false;
+        }
+        if (names.contains(a.name.toLower()))
+        {
+            if (error != nullptr) *error = TR("Trùng tên tài khoản: %1").arg(a.name);
+            return false;
+        }
+        names.insert(a.name.toLower());
+    }
+    accounts_ = accounts;
     listener_ = new QTcpServer(this);
     // Loopback ONLY: never expose this port to the network. Remote access goes through SSH.
     if (!listener_->listen(QHostAddress::LocalHost, port))
@@ -287,6 +325,8 @@ void RemoteControlServer::Reply(QTcpSocket* socket, qint64 id, const Result& res
     else
     {
         response.insert(QStringLiteral("error"), result.error);
+        if (!result.code.isEmpty()) response.insert(QStringLiteral("code"), result.code);
+        if (!result.requiredRole.isEmpty()) response.insert(QStringLiteral("required"), result.requiredRole);
     }
     SendObject(socket, response);
 }
@@ -297,7 +337,10 @@ void RemoteControlServer::HandleLine(QTcpSocket* socket, const QByteArray& line)
     const QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isObject())
     {
-        Reply(socket, 0, {false, {}, TR("Yêu cầu không phải JSON object hợp lệ."), false});
+        Result invalid;
+        invalid.ok = false;
+        invalid.error = TR("Yêu cầu không phải JSON object hợp lệ.");
+        Reply(socket, 0, invalid);
         return;
     }
     const QJsonObject request = doc.object();
@@ -322,7 +365,31 @@ void RemoteControlServer::HandleLine(QTcpSocket* socket, const QByteArray& line)
     }
 
     const qint64 id = static_cast<qint64>(request.value(QStringLiteral("id")).toDouble());
+    const Client& session = *it;
+    g_sessionLanguage = session.language;
+
+    // Role check BEFORE anything is looked up or executed. Unknown commands fall through to Dispatch.
+    if (const auto required = RequiredRole(cmd); required.has_value() && static_cast<int>(session.account.role) < static_cast<int>(*required))
+    {
+        Result denied;
+        denied.ok = false;
+        denied.code = QStringLiteral("forbidden");
+        denied.requiredRole = RoleName(*required);
+        denied.error = TR("Không đủ quyền: lệnh \"%1\" cần vai trò %2 (bạn là %3).").arg(cmd, RoleName(*required), RoleName(session.account.role));
+        Audit(session, cmd, request, QStringLiteral("DENIED (needs %1)").arg(RoleName(*required)));
+        Reply(socket, id, denied);
+        return;
+    }
+
     const Result result = Dispatch(socket, cmd, request, id);
+    if (cmd != QLatin1String("ping") && cmd != QLatin1String("unsubscribe"))
+    {
+        const auto again = clients_.constFind(socket);
+        if (again != clients_.constEnd())
+        {
+            Audit(*again, cmd, request, result.deferred ? QStringLiteral("started") : (result.ok ? QStringLiteral("ok") : (result.code == QLatin1String("forbidden") ? QStringLiteral("DENIED (") + result.error + QLatin1Char(')') : QStringLiteral("error: ") + result.error)));
+        }
+    }
     if (!result.deferred)
     {
         Reply(socket, id, result);
@@ -332,21 +399,41 @@ void RemoteControlServer::HandleLine(QTcpSocket* socket, const QByteArray& line)
 void RemoteControlServer::HandleAuth(QTcpSocket* socket, const QJsonObject& request)
 {
     Client& client = clients_[socket];
-    const QByteArray expected = ComputeProof(token_, client.nonce).toLatin1();
+    client.language = request.value(QStringLiteral("lang")).toString();
+    g_sessionLanguage = client.language;
+    // The client names the account it wants to use; v1 clients (no "user") get "admin".
+    const QString user = request.value(QStringLiteral("user")).toString(QStringLiteral("admin")).trimmed();
+    const Account* found = nullptr;
+    for (const Account& a : accounts_)
+    {
+        if (a.name.compare(user, Qt::CaseInsensitive) == 0)
+        {
+            found = &a;
+            break;
+        }
+    }
+    // Always compute a proof (against a dummy secret for unknown users) so response
+    // timing does not reveal which account names exist.
+    const QString secret = found != nullptr ? found->secret : QStringLiteral("0000000000000000-no-such-account");
+    const QByteArray expected = ComputeProof(secret, client.nonce).toLatin1();
     const QByteArray given = request.value(QStringLiteral("proof")).toString().toLower().toLatin1();
 
     QJsonObject response;
     response.insert(QStringLiteral("type"), QStringLiteral("auth"));
-    if (ConstantTimeEquals(expected, given))
+    if (found != nullptr && ConstantTimeEquals(expected, given))
     {
         consecutiveAuthFailures_ = 0;
         client.authenticated = true;
+        client.account = *found;
         if (client.authTimeout != nullptr)
         {
             client.authTimeout->stop();
         }
         response.insert(QStringLiteral("ok"), true);
+        response.insert(QStringLiteral("user"), found->name);
+        response.insert(QStringLiteral("role"), RoleName(found->role));
         SendObject(socket, response);
+        Audit(client, QStringLiteral("auth"), QJsonObject(), QStringLiteral("ok"));
         return;
     }
 
@@ -355,8 +442,12 @@ void RemoteControlServer::HandleAuth(QTcpSocket* socket, const QJsonObject& requ
         lockedUntilMs_ = QDateTime::currentMSecsSinceEpoch() + kLockoutMs;
         consecutiveAuthFailures_ = 0;
     }
+    Client attempt = client;
+    attempt.account.name = user.left(32);
+    attempt.account.role = Role::Viewer;
+    Audit(attempt, QStringLiteral("auth"), QJsonObject(), QStringLiteral("DENIED (wrong token/user)"));
     response.insert(QStringLiteral("ok"), false);
-    response.insert(QStringLiteral("error"), QStringLiteral("Sai token."));
+    response.insert(QStringLiteral("error"), TR("Sai tên tài khoản hoặc token."));
     SendObject(socket, response);
     QTimer::singleShot(200, this, [this, socket]() { DropClient(socket); }); // let the reply flush
 }
@@ -413,6 +504,10 @@ QJsonObject RemoteControlServer::DescribeServer(const std::shared_ptr<server::Mi
         o.insert(QStringLiteral("maxMemoryMB"), static_cast<double>(cfg.maxMemoryMB));
         o.insert(QStringLiteral("autoRestart"), cfg.autoRestart);
         o.insert(QStringLiteral("autoBackup"), cfg.autoBackup);
+        o.insert(QStringLiteral("autoStartOnAppLaunch"), cfg.autoStartOnAppLaunch);
+        o.insert(QStringLiteral("autoBackupIntervalMinutes"), cfg.autoBackupIntervalMinutes);
+        o.insert(QStringLiteral("backupRetention"), cfg.backupRetention);
+        o.insert(QStringLiteral("stopTimeoutSeconds"), cfg.stopTimeoutSeconds);
         QJsonArray names;
         for (const auto& p : players)
         {
@@ -427,9 +522,16 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     QTcpSocket* socket, const QString& cmd, const QJsonObject& request, qint64 id)
 {
     Result r;
+    const Account account = clients_.value(socket).account;
     auto fail = [&r](const QString& message) {
         r.ok = false;
         r.error = message;
+        return r;
+    };
+    auto outOfScope = [&r, &account](const QString& serverName) {
+        r.ok = false;
+        r.code = QStringLiteral("forbidden");
+        r.error = TR("Tài khoản \"%1\" không được phép truy cập server \"%2\".").arg(account.name, serverName);
         return r;
     };
 
@@ -439,11 +541,15 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
         r.data.insert(QStringLiteral("protocol"), kProtocolVersion);
         return r;
     }
+    if (cmd == QLatin1String("whoami")) return CmdWhoAmI(account);
+    if (cmd == QLatin1String("app")) return CmdApp(account);
+    if (cmd == QLatin1String("audit")) return CmdAudit(request);
     if (cmd == QLatin1String("list"))
     {
         QJsonArray servers;
         for (const auto& srv : serverManager_->GetAll())
         {
+            if (!CanAccessServer(account, W2Q(srv->GetConfig().id))) continue; // hidden, not just forbidden
             servers.append(DescribeServer(srv, false));
         }
         r.data.insert(QStringLiteral("servers"), servers);
@@ -464,6 +570,11 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
                 client.subscribed = false;
                 return fail(error);
             }
+            if (!CanAccessServer(account, W2Q(srv->GetConfig().id)))
+            {
+                client.subscribed = false;
+                return outOfScope(W2Q(srv->GetConfig().name));
+            }
             client.subscribedServerId = W2Q(srv->GetConfig().id);
         }
         r.data.insert(QStringLiteral("subscribed"), client.subscribed);
@@ -476,6 +587,10 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
     if (!srv)
     {
         return fail(error);
+    }
+    if (!CanAccessServer(account, W2Q(srv->GetConfig().id)))
+    {
+        return outOfScope(W2Q(srv->GetConfig().name));
     }
     const core::ServerState state = srv->GetState();
 
@@ -733,7 +848,8 @@ RemoteControlServer::Result RemoteControlServer::CmdBackup(
     // from the UI thread when it finishes (the client just waits for the reply).
     QPointer<QTcpSocket> target(socket);
     QPointer<RemoteControlServer> self(this);
-    std::thread([self, target, srv, id]() {
+    const QString sessionLanguage = g_sessionLanguage; // copy: the worker must not touch the shared variable
+    std::thread([self, target, srv, id, sessionLanguage]() {
         srv->PrepareForBackup();
         const auto created = backup::CreateBackup(srv->GetConfig());
         srv->FinishBackup();
@@ -746,7 +862,7 @@ RemoteControlServer::Result RemoteControlServer::CmdBackup(
         else
         {
             result.ok = false;
-            result.error = TR("Backup thất bại (server chưa có world?).");
+            result.error = ::i18n::TrIn(sessionLanguage, QStringLiteral("Backup thất bại (server chưa có world?)."));
         }
         if (RemoteControlServer* s = self.data())
         {
@@ -762,6 +878,127 @@ RemoteControlServer::Result RemoteControlServer::CmdBackup(
     Result deferred;
     deferred.deferred = true;
     return deferred;
+}
+
+RemoteControlServer::Result RemoteControlServer::CmdWhoAmI(const Account& account) const
+{
+    Result r;
+    r.data.insert(QStringLiteral("user"), account.name);
+    r.data.insert(QStringLiteral("role"), RoleName(account.role));
+    r.data.insert(QStringLiteral("allServers"), account.serverIds.isEmpty());
+    QJsonArray scope;
+    for (const QString& id : account.serverIds)
+    {
+        QJsonObject o;
+        o.insert(QStringLiteral("id"), id);
+        QString name = id;
+        for (const auto& srv : serverManager_->GetAll())
+        {
+            if (W2Q(srv->GetConfig().id) == id) name = W2Q(srv->GetConfig().name);
+        }
+        o.insert(QStringLiteral("name"), name);
+        scope.append(o);
+    }
+    r.data.insert(QStringLiteral("servers"), scope);
+    QJsonArray allowed;
+    for (const QString& c : CommandsForRole(account.role)) allowed.append(c);
+    r.data.insert(QStringLiteral("commands"), allowed);
+    r.data.insert(QStringLiteral("matrix"), PermissionMatrix());
+    r.data.insert(QStringLiteral("protocol"), kProtocolVersion);
+    return r;
+}
+
+RemoteControlServer::Result RemoteControlServer::CmdApp(const Account& account) const
+{
+    Result r;
+    r.data.insert(QStringLiteral("name"), QStringLiteral("Redstone"));
+    r.data.insert(QStringLiteral("version"), QCoreApplication::applicationVersion());
+    r.data.insert(QStringLiteral("protocol"), kProtocolVersion);
+    r.data.insert(QStringLiteral("language"), i18n::CurrentLanguage());
+    r.data.insert(QStringLiteral("uptimeSeconds"), static_cast<double>(uptime_.elapsed() / 1000));
+    int total = 0, running = 0, players = 0;
+    for (const auto& srv : serverManager_->GetAll())
+    {
+        if (!CanAccessServer(account, W2Q(srv->GetConfig().id))) continue;
+        ++total;
+        if (srv->GetState() == core::ServerState::Running) ++running;
+        players += static_cast<int>(srv->GetOnlinePlayers().size());
+    }
+    r.data.insert(QStringLiteral("servers"), total);
+    r.data.insert(QStringLiteral("serversRunning"), running);
+    r.data.insert(QStringLiteral("playersOnline"), players);
+    r.data.insert(QStringLiteral("sessions"), static_cast<int>(clients_.size()));
+    return r;
+}
+
+namespace
+{
+QString AuditPath()
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data/remote_audit.log"));
+}
+} // namespace
+
+QStringList RemoteControlServer::ReadAuditTail(int lines)
+{
+    QFile file(AuditPath());
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return {};
+    }
+    const qint64 size = file.size();
+    file.seek(std::max<qint64>(0, size - 256 * 1024));
+    QStringList all = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    if (size > 256 * 1024 && !all.isEmpty()) all.removeFirst(); // first line is probably cut
+    return all.mid(std::max(0, static_cast<int>(all.size()) - lines));
+}
+
+RemoteControlServer::Result RemoteControlServer::CmdAudit(const QJsonObject& request) const
+{
+    Result r;
+    const int n = std::clamp(request.value(QStringLiteral("lines")).toInt(50), 1, 500);
+    QJsonArray out;
+    for (const QString& line : ReadAuditTail(n)) out.append(line);
+    r.data.insert(QStringLiteral("lines"), out);
+    return r;
+}
+
+void RemoteControlServer::Audit(const Client& client, const QString& cmd, const QJsonObject& request, const QString& outcome)
+{
+    // What was asked, without secrets: raw console commands and messages are logged (admins/operators
+    // are accountable for them); property values for anything password-like are masked.
+    QString what = cmd;
+    const QString server = request.value(QStringLiteral("server")).toString();
+    if (!server.isEmpty()) what += QLatin1Char(' ') + server;
+    if (cmd == QLatin1String("player"))
+    {
+        what += QStringLiteral(" %1 %2").arg(request.value(QStringLiteral("action")).toString(), request.value(QStringLiteral("name")).toString());
+    }
+    else if (cmd == QLatin1String("send"))
+    {
+        what += QStringLiteral(" \"%1\"").arg(request.value(QStringLiteral("command")).toString().left(120));
+    }
+    else if (cmd == QLatin1String("prop-set"))
+    {
+        const QString key = request.value(QStringLiteral("key")).toString();
+        const bool secret = key.contains(QLatin1String("password"), Qt::CaseInsensitive);
+        what += QStringLiteral(" %1=%2").arg(key, secret ? QStringLiteral("***") : request.value(QStringLiteral("value")).toString().left(80));
+    }
+    const QString line = QStringLiteral("%1 | %2 (%3) | %4 | %5\n")
+        .arg(QDateTime::currentDateTime().toString(Qt::ISODate), client.account.name, client.authenticated ? RoleName(client.account.role) : QStringLiteral("-"), what, outcome);
+
+    const QString path = AuditPath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    if (QFileInfo(path).size() > 1024 * 1024) // keep it small: one rotated generation
+    {
+        QFile::remove(path + QStringLiteral(".1"));
+        QFile::rename(path, path + QStringLiteral(".1"));
+    }
+    QFile file(path);
+    if (file.open(QIODevice::Append))
+    {
+        file.write(line.toUtf8());
+    }
 }
 
 void RemoteControlServer::BroadcastEvent(const core::AppEvent& event)
@@ -786,7 +1023,7 @@ void RemoteControlServer::BroadcastEvent(const core::AppEvent& event)
     for (auto it = clients_.constBegin(); it != clients_.constEnd(); ++it)
     {
         const Client& client = it.value();
-        if (!client.authenticated || !client.subscribed)
+        if (!client.authenticated || !client.subscribed || !CanAccessServer(client.account, W2Q(event.serverId)))
         {
             continue;
         }

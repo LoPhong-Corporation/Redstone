@@ -137,6 +137,32 @@ QString Tr(const QString& source)
     return it != g_dictionary.constEnd() ? it.value() : source;
 }
 
+QString TrIn(const QString& language, const QString& source)
+{
+    const QString code = language.trimmed().toLower();
+    if (code.isEmpty() || code == CurrentLanguage())
+    {
+        return Tr(source);
+    }
+    static QReadWriteLock cacheLock;
+    static QHash<QString, QHash<QString, QString>> cache;
+    {
+        QReadLocker lock(&cacheLock);
+        if (const auto it = cache.constFind(code); it != cache.constEnd())
+        {
+            const auto hit = it->constFind(source);
+            return hit != it->constEnd() ? hit.value() : source;
+        }
+    }
+    QHash<QString, QString> dictionary;
+    ReadDictionary(QStringLiteral(":/i18n/%1.json").arg(code), dictionary, nullptr);
+    ReadDictionary(QDir(ExternalDir()).filePath(code + QStringLiteral(".json")), dictionary, nullptr);
+    QWriteLocker lock(&cacheLock);
+    cache.insert(code, dictionary);
+    const auto hit = dictionary.constFind(source);
+    return hit != dictionary.constEnd() ? hit.value() : source;
+}
+
 std::wstring TrW(const wchar_t* source)
 {
     return Tr(QString::fromWCharArray(source)).toStdWString();

@@ -11,6 +11,17 @@ Server có sẵn, xem/xoá plugin-mod đã cài, tự restart định kỳ có c
 cùng vài **cải thiện hiệu năng**. Chi tiết từng phần bên dưới. Chưa làm: firewall rule tự động,
 Discord bot, MSPT thật.
 
+## Bảo vệ token & bộ kiểm thử
+
+- **Token lưu trên đĩa được mã hoá bằng Windows DPAPI** (chỉ đúng tài khoản Windows trên đúng máy đó giải mã được) — cả danh sách tài khoản trong `data/app_settings.ini` của app lẫn token trong profile của CLI. File cũ dạng văn bản thường vẫn đọc được và được lưu lại ở dạng mã hoá. Nếu copy file sang máy/tài khoản khác thì không giải mã được: app tạo tài khoản admin mới và báo qua khay, CLI yêu cầu chạy lại `profile add`. Trên hệ điều hành khác không có DPAPI thì lưu như cũ (file chỉ cho user hiện tại).
+- **Kiểm thử** (`-DMSM_BUILD_TESTS=ON`, chạy bằng `ctest`): `ConfigSmokeTests` (cấu hình), `QtTests` (65+ kiểm tra: phân quyền theo vai trò, đọc zip không tin cậy gồm DEFLATE/zip bomb/zip-slip/CRC, kiểm tra modpack, bản dịch giữ nguyên placeholder, SecretStore) và `RedstonectlGoTests` (CLI Go: bắt tay, xác thực, dịch, banner).
+
+## CLI v2: phân quyền, chi tiết, banner nền màu
+
+- **Phân quyền nhiều tài khoản**: *Cài đặt > Điều khiển từ xa* quản lý các tài khoản (tên + token + vai trò `viewer`/`operator`/`admin` + giới hạn server). App kiểm tra quyền ở mỗi lệnh, ẩn server ngoài phạm vi và ghi **nhật ký truy cập** (`data/remote_audit.log`, xem ngay trong trang cài đặt). Token cũ tự chuyển thành tài khoản `admin`. Giao thức nâng lên v2 (`docs/REMOTE_PROTOCOL.md`).
+- **CLI**: `--user`, `whoami`, `perms`, `audit`, `info` (CLI/OpenSSH/kết nối/app/server), `doctor` (chẩn đoán từng bước), bảng và hộp thông tin có màu, spinner khi chờ, `help` hiện vai trò tối thiểu của từng lệnh; banner vẽ bằng màu nền.
+- Thông báo lỗi từ app được dịch theo `--lang` của CLI.
+
 ## Giao diện Fluent & cài đặt mới
 
 - **Giao diện Fluent 2 / Windows 11**: lớp nền–thẻ–control, bo góc 4/8px, nút accent, ô nhập có viền focus dưới, tab gạch chân, scrollbar mảnh, icon Segoe Fluent Icons, toggle switch. Có chủ đề Sáng/Tối/Theo hệ thống và 6 màu nhấn. Trên Windows 11, thanh tiêu đề tự đổi sáng/tối, bo góc và Mica (qua DWM). Mã nguồn: `src/ui/FluentTheme.*`, `FluentWidgets.*`.
@@ -330,5 +341,3 @@ src/
                   InstalledAddonsDialog, AdvancedSettingsDialog (tunnel + scheduled restart +
                   auto-start-with-app), AppSettingsDialog (khởi động cùng Windows), LibraryDialog
 ```
-
-Made with ❤️ by LoPhong Corporation and Claude

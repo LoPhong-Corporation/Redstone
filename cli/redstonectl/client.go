@@ -15,12 +15,12 @@ import (
 
 // Protocol: newline-delimited JSON over TCP (see docs/REMOTE_PROTOCOL.md).
 //
-//	S -> {"type":"hello","protocol":1,"nonce":"<hex>"}
-//	C -> {"cmd":"auth","proof":"<hex HMAC-SHA256(token, nonce)>"}
-//	S -> {"type":"auth","ok":true}
+//	S -> {"type":"hello","protocol":2,"nonce":"<hex>"}
+//	C -> {"cmd":"auth","user":"<account>","proof":"<hex HMAC-SHA256(token, nonce)>"}
+//	S -> {"type":"auth","ok":true,"user":"<account>","role":"viewer|operator|admin"}
 //	C -> {"id":1,"cmd":"list"}            S -> {"id":1,"ok":true,"data":{...}}
 //	S -> {"type":"event","event":"console","server":"<id>","line":"..."}   (after subscribe)
-const protocolVersion = 1
+const protocolVersion = 2
 
 // ComputeProof returns hex(HMAC-SHA256(key=token, msg=nonce)) - the token itself is never sent.
 func ComputeProof(token, nonce string) string {
@@ -38,14 +38,20 @@ type Event struct {
 }
 
 type response struct {
-	ID    int64           `json:"id"`
-	OK    bool            `json:"ok"`
-	Data  json.RawMessage `json:"data"`
-	Error string          `json:"error"`
+	ID       int64           `json:"id"`
+	OK       bool            `json:"ok"`
+	Data     json.RawMessage `json:"data"`
+	Error    string          `json:"error"`
+	Code     string          `json:"code"`
+	Required string          `json:"required"`
 }
 
 // RemoteError is an error reported by the app (as opposed to a transport failure).
-type RemoteError struct{ Message string }
+type RemoteError struct {
+	Message  string
+	Code     string // "forbidden" when the account lacks permission
+	Required string // role needed (with Code == "forbidden")
+}
 
 func (e *RemoteError) Error() string { return e.Message }
 
@@ -59,10 +65,12 @@ type Client struct {
 	closed  bool
 	readErr error
 	Events  chan Event
+	User    string // account name the session is authenticated as
+	Role    string // viewer | operator | admin
 }
 
 // Dial connects, performs the HMAC handshake and starts the reader loop.
-func Dial(addr, token string, timeout time.Duration) (*Client, error) {
+func Dial(addr, user, token string, timeout time.Duration) (*Client, error) {
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return nil, fmt.Errorf(T("không kết nối được tới %s: %w (app Redstone đã bật \"Điều khiển từ xa\" chưa?)"), addr, err)
@@ -89,7 +97,7 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 		return nil, fmt.Errorf(T("khác phiên bản giao thức (app: %d, CLI: %d) - hãy cập nhật cả hai"), hello.Protocol, protocolVersion)
 	}
 
-	auth, _ := json.Marshal(map[string]string{"cmd": "auth", "proof": ComputeProof(token, hello.Nonce)})
+	auth, _ := json.Marshal(map[string]string{"cmd": "auth", "user": user, "lang": lang, "proof": ComputeProof(token, hello.Nonce)})
 	if _, err := conn.Write(append(auth, '\n')); err != nil {
 		conn.Close()
 		return nil, err
@@ -102,6 +110,8 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 	var ar struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
+		User  string `json:"user"`
+		Role  string `json:"role"`
 	}
 	if err := json.Unmarshal(line, &ar); err != nil || !ar.OK {
 		conn.Close()
@@ -119,6 +129,7 @@ func Dial(addr, token string, timeout time.Duration) (*Client, error) {
 		pending: map[int64]chan response{},
 		Events:  make(chan Event, 1024),
 	}
+	c.User, c.Role = ar.User, ar.Role
 	go c.readLoop(r)
 	return c, nil
 }
@@ -216,7 +227,7 @@ func (c *Client) Call(cmd string, params map[string]any, timeout time.Duration) 
 			return nil, errors.New(T("mất kết nối tới app"))
 		}
 		if !resp.OK {
-			return nil, &RemoteError{Message: resp.Error}
+			return nil, &RemoteError{Message: resp.Error, Code: resp.Code, Required: resp.Required}
 		}
 		return resp.Data, nil
 	case <-time.After(timeout):

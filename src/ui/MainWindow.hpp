@@ -128,7 +128,7 @@ private:
     std::vector<ThemedIcon> themedIcons_;
 
     remote::RemoteControlServer* remote_ = nullptr;
-    QString remoteActiveToken_;
+    QString remoteActiveAccounts_; // JSON of the accounts the running endpoint was started with
     quint16 remoteActivePort_ = 0;
 
     QHBoxLayout* actionLayout_ = nullptr;

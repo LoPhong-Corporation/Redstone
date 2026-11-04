@@ -28,6 +28,7 @@ type cmdSpec struct {
 	Args        string
 	Help        string
 	NeedsServer bool
+	Role        string // minimum role (display only - the app enforces it)
 	Run         func(env *Env, server string, args []string) error
 }
 
@@ -108,6 +109,8 @@ func playerAction(action string, needName bool, withReason bool) func(*Env, stri
 func waitForState(env *Env, server string, timeout time.Duration, wantRestartCycle bool, ok func(string) bool) error {
 	started := time.Now()
 	deadline := started.Add(timeout)
+	sp := startSpinner(fmt.Sprintf(T("Đang chờ server %s..."), server))
+	defer sp.Stop()
 	sawLeave := !wantRestartCycle
 	var last string
 	for time.Now().Before(deadline) {
@@ -120,6 +123,7 @@ func waitForState(env *Env, server string, timeout time.Duration, wantRestartCyc
 			return err
 		}
 		last = s.State
+		sp.Update(fmt.Sprintf(T("Đang chờ server %s... trạng thái: %s"), server, s.State))
 		if wantRestartCycle && s.State != "Running" {
 			sawLeave = true
 		}
@@ -129,7 +133,8 @@ func waitForState(env *Env, server string, timeout time.Duration, wantRestartCyc
 			sawLeave = true
 		}
 		if sawLeave && ok(s.State) {
-			fmt.Fprintf(env.Out, T("Trạng thái: %s\n"), colorState(s.State))
+			sp.Stop()
+			fmt.Fprintf(env.Out, "%s %s\n", okMark(), fmt.Sprintf(T("Trạng thái: %s"), stateBadge(s.State)))
 			return nil
 		}
 		select {
@@ -168,6 +173,12 @@ func lifecycle(name string, target func(string) bool, cycle bool) func(*Env, str
 var commands []*cmdSpec
 
 func buildCommands() {
+	defer func() {
+		registerAccessCommands()
+		for _, spec := range commands {
+			spec.Role = firstNonEmpty(commandRoles[spec.Name], "viewer")
+		}
+	}()
 	commands = []*cmdSpec{
 		{Name: "banner", Help: "In logo redstone ASCII", Run: func(env *Env, _ string, _ []string) error {
 			printBanner(env.Out)
@@ -269,7 +280,8 @@ func buildCommands() {
 			return nil
 		}},
 		{Name: "backup", Args: "<server>", Help: T("Tạo backup ngay (an toàn khi server đang chạy)"), NeedsServer: true, Run: func(env *Env, server string, _ []string) error {
-			fmt.Fprintln(os.Stderr, T("Đang tạo backup..."))
+			sp := startSpinner(T("Đang tạo backup..."))
+			defer sp.Stop()
 			old := env.Timeout
 			env.Timeout = 30 * time.Minute // compressing a big world can take a while
 			defer func() { env.Timeout = old }()
@@ -349,6 +361,23 @@ func buildCommands() {
 			return nil
 		}},
 	}
+}
+
+func registerAccessCommands() {
+	commands = append(commands,
+		&cmdSpec{Name: "whoami", Help: "Tài khoản đang dùng, vai trò và phạm vi", Run: runWhoAmI},
+		&cmdSpec{Name: "perms", Help: "Bảng phân quyền: vai trò nào được chạy lệnh nào", Run: runPerms},
+		&cmdSpec{Name: "audit", Args: "[-n 50]", Help: "Nhật ký truy cập của app (chỉ admin)", Run: runAudit},
+	)
+}
+
+var commandRoles = map[string]string{
+	"ping": "viewer", "list": "viewer", "status": "viewer", "console": "viewer", "players": "viewer", "backups": "viewer",
+	"props": "viewer", "banner": "viewer", "whoami": "viewer", "perms": "viewer",
+	"start": "operator", "stop": "operator", "restart": "operator", "backup": "operator",
+	"op": "operator", "deop": "operator", "kick": "operator", "ban": "operator", "pardon": "operator", "banip": "operator",
+	"pardonip": "operator", "whitelist": "operator", "gamemode": "operator", "msg": "operator", "say": "operator",
+	"send": "admin", "prop-set": "admin", "audit": "admin",
 }
 
 func findCommand(name string) *cmdSpec {

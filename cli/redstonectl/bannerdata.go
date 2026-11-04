@@ -1,8 +1,42 @@
 package main
 
-// Generated from resources/redstone_sprite.png - the redstone dust icon as ASCII.
-// bannerChars holds the glyphs; bannerShade the shade index (0 darkest .. 5 brightest, "." = empty)
-// that is mapped to a 256-colour red when colour output is on.
+// Redstone dust sprite (15x12), generated from resources/redstone_sprite.png (quantised to 16 colours).
+//
+// bannerGrid: one letter per pixel, an index into bannerPalette ('.' = transparent).
+// The banner paints every pixel as TWO SPACES with a BACKGROUND colour (solid pixel-art
+// blocks, not coloured text). bannerChars is the plain-ASCII fallback used when colour is off.
+
+var bannerPalette = [][3]uint8{
+	{92, 5, 1},
+	{115, 0, 1},
+	{172, 16, 4},
+	{143, 55, 49},
+	{241, 1, 1},
+	{64, 5, 1},
+	{46, 0, 2},
+	{92, 16, 12},
+	{110, 1, 0},
+	{43, 0, 1},
+	{174, 13, 2},
+	{61, 5, 1},
+	{52, 6, 7},
+	{45, 1, 2},
+}
+
+var bannerGrid = []string{
+	"......aaa......",
+	".....abcca.....",
+	"...daceecfgh...",
+	"..aacecibefjj..",
+	".dakckciiealmn.",
+	"aikccbeeebllljj",
+	"abbecbfbibfclmg",
+	"acbicekiblfaafn",
+	"jffcecbffcfffmj",
+	".nflcbflaffmjn.",
+	"..dnnmfffmnnj..",
+	".....nnnnn.....",
+}
 
 var bannerChars = []string{
 	"            ++++++            ",
@@ -18,20 +52,3 @@ var bannerChars = []string{
 	"    %%----==========------    ",
 	"          ----------          ",
 }
-
-var bannerShade = []string{
-	"............111111............",
-	"..........1122333311..........",
-	"......551133444433110033......",
-	"....1111334433112244110000....",
-	"..44113333333311114411111100..",
-	"111133333311444444111111110000",
-	"111122443311112211111133111100",
-	"113322113344331122111111111100",
-	"001111334433221111331111111100",
-	"..00111133111111111111110000..",
-	"....4400001111111111000000....",
-	"..........0000000000..........",
-}
-
-var bannerPalette = []int{52, 88, 124, 160, 196, 203}

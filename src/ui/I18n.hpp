@@ -32,6 +32,9 @@ QString ResolveAuto();
 QList<LanguageInfo> AvailableLanguages();   // always includes the source language "vi"
 
 QString Tr(const QString& source);
+// Translate into a specific language regardless of the app language (remote sessions use the
+// language their CLI asked for). Unknown/empty language falls back to the app language.
+QString TrIn(const QString& language, const QString& source);
 std::wstring TrW(const wchar_t* source);
 
 } // namespace i18n

@@ -324,6 +324,14 @@ QCheckBox::indicator:hover { border-color: @text2@; background-color: @controlHo
 QCheckBox::indicator:checked { background-color: @accent@; border: 1px solid @accent@; image: url("@check@"); }
 QCheckBox::indicator:checked:hover { background-color: @accentHover@; border-color: @accentHover@; }
 QCheckBox::indicator:disabled { border-color: @textDis@; background-color: transparent; }
+/* check boxes inside item views (list/table/tree), e.g. the server picker */
+QListView::indicator, QTableView::indicator, QTreeView::indicator {
+    width: 16px; height: 16px; border: 1px solid @text3@; border-radius: 4px; background-color: @control@;
+}
+QListView::indicator:checked, QTableView::indicator:checked, QTreeView::indicator:checked {
+    background-color: @accent@; border: 1px solid @accent@; image: url("@check@");
+}
+QListView::indicator:disabled, QTableView::indicator:disabled { border-color: @textDis@; background-color: transparent; }
 QRadioButton::indicator { width: 18px; height: 18px; border: 1px solid @text3@; border-radius: 10px; background-color: @control@; }
 QRadioButton::indicator:hover { border-color: @text2@; }
 QRadioButton::indicator:checked { border: 6px solid @accent@; background-color: #FFFFFF; }

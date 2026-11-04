@@ -4,6 +4,8 @@
 // INI file next to the executable (data/app_settings.ini) via QSettings,
 // so there is no extra dependency and the file is easy to hand-edit.
 
+#include "remote/Access.hpp"
+
 #include <QByteArray>
 #include <QString>
 
@@ -41,7 +43,10 @@ struct AppSettings
     // --- Remote control (see remote::RemoteControlServer / redstonectl) ---
     bool remoteEnabled = false;      // off by default: nothing listens until the user opts in
     int remotePort = 25585;          // loopback only; reach it from other machines through SSH
-    QString remoteToken;             // shared secret (never sent over the wire, only an HMAC of it)
+    // Access accounts (name + secret + role + server scope). Secrets never cross the wire,
+    // only an HMAC of them. See remote/Access.hpp for what each role may do.
+    QList<remote::Account> remoteAccounts;
+    bool remoteAccountsUnreadable = false; // stored tokens could not be decrypted (copied from another Windows account/PC?)
 
     // Window placement (QMainWindow::saveGeometry, base64 in the ini); empty = pick a size from the screen.
     QByteArray windowGeometry;

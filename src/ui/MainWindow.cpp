@@ -439,31 +439,45 @@ void MainWindow::LayoutActionButtons(const std::vector<QPushButton*>& visibleInO
 void MainWindow::ApplyRemoteSettings(bool interactive)
 {
     AppSettings& s = CurrentSettings();
+    if (s.remoteAccountsUnreadable && s.remoteEnabled && !interactive && trayIcon_ != nullptr)
+    {
+        trayIcon_->showMessage(
+            QStringLiteral("Redstone"),
+            TR("Không đọc được token đã lưu (file cài đặt từ tài khoản Windows hoặc máy khác?). Đã tạo tài khoản admin mới — xem token trong Cài đặt."),
+            QSystemTrayIcon::Warning, 8000);
+        s.remoteAccountsUnreadable = false;
+    }
     if (!s.remoteEnabled)
     {
         remote_->Stop();
-        remoteActiveToken_.clear();
+        remoteActiveAccounts_.clear();
         remoteActivePort_ = 0;
         return;
     }
-    if (s.remoteToken.isEmpty())
+    if (s.remoteAccounts.isEmpty())
     {
-        s.remoteToken = remote::RemoteControlServer::GenerateToken();
+        // Never run with no accounts: create a default full-access one.
+        remote::Account admin;
+        admin.name = QStringLiteral("admin");
+        admin.secret = remote::RemoteControlServer::GenerateToken();
+        admin.role = remote::Role::Admin;
+        s.remoteAccounts.push_back(admin);
         s.Save();
     }
     const auto port = static_cast<quint16>(s.remotePort);
-    if (remote_->IsListening() && remoteActivePort_ == port && remoteActiveToken_ == s.remoteToken)
+    const QString accountsJson = remote::AccountsToJson(s.remoteAccounts);
+    if (remote_->IsListening() && remoteActivePort_ == port && remoteActiveAccounts_ == accountsJson)
     {
         return; // nothing changed - keep existing sessions
     }
     QString error;
-    if (remote_->Start(port, s.remoteToken, &error))
+    if (remote_->Start(port, s.remoteAccounts, &error))
     {
-        remoteActiveToken_ = s.remoteToken;
+        remoteActiveAccounts_ = accountsJson;
         remoteActivePort_ = port;
         return;
     }
-    remoteActiveToken_.clear();
+    remoteActiveAccounts_.clear();
     remoteActivePort_ = 0;
     const QString message = TR("Không bật được điều khiển từ xa trên 127.0.0.1:%1 — %2").arg(port).arg(error);
     if (interactive)
@@ -829,6 +843,14 @@ void MainWindow::OnOpenAdvancedSettingsClicked()
 void MainWindow::OnOpenAppSettingsClicked()
 {
     AppSettingsDialog dialog(this);
+    {
+        QList<QPair<QString, QString>> servers; // for the per-account server scope picker
+        for (const auto& srv : serverManager_->GetAll())
+        {
+            servers.append({QString::fromStdWString(srv->GetConfig().id), QString::fromStdWString(srv->GetConfig().name)});
+        }
+        dialog.SetKnownServers(servers);
+    }
     connect(&dialog, &AppSettingsDialog::settingsApplied, this, &MainWindow::OnAppSettingsApplied);
     connect(&dialog, &AppSettingsDialog::restartRequested, this, &MainWindow::RequestRestart, Qt::QueuedConnection);
     dialog.exec();

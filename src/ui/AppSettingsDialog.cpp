@@ -10,6 +10,11 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <algorithm>
+#include <QSet>
+#include <QScrollBar>
+#include <QPlainTextEdit>
+#include <QCheckBox>
 #include <QGuiApplication>
 #include <QLineEdit>
 #include <QComboBox>
@@ -248,27 +253,7 @@ QWidget* AppSettingsDialog::BuildRemotePage()
     spinRemotePort_ = new QSpinBox();
     spinRemotePort_->setRange(1024, 65535);
     spinRemotePort_->setMinimumWidth(120);
-    layout->addWidget(MakeSettingRow(QStringLiteral("Port"), TR("Port trên 127.0.0.1 mà redstonectl kết nối tới."), spinRemotePort_));
-
-    editRemoteToken_ = new QLineEdit();
-    editRemoteToken_->setEchoMode(QLineEdit::Password);
-    editRemoteToken_->setReadOnly(true);
-    editRemoteToken_->setMinimumWidth(120); // the row is stacked (full width), so it can shrink with the window
-    auto* showButton = new QPushButton(TR("Hiện"));
-    auto* copyButton = new QPushButton(TR("Sao chép"));
-    auto* newButton = new QPushButton(TR("Tạo mới"));
-    auto* tokenBox = new QWidget();
-    auto* tokenLayout = new QHBoxLayout(tokenBox);
-    tokenLayout->setContentsMargins(0, 0, 0, 0);
-    tokenLayout->setSpacing(8);
-    tokenLayout->addWidget(editRemoteToken_, 1);
-    tokenLayout->addWidget(showButton);
-    tokenLayout->addWidget(copyButton);
-    tokenLayout->addWidget(newButton);
-    layout->addWidget(MakeSettingRow(
-        TR("Token truy cập"),
-        TR("Mật khẩu dùng chung. Token không bao giờ được gửi qua kết nối, chỉ một mã HMAC của nó. Tạo mới sẽ ngắt mọi phiên cũ."),
-        tokenBox, nullptr, true));
+    layout->addWidget(MakeSettingRow(TR("Port"), TR("Port trên 127.0.0.1 mà redstonectl kết nối tới."), spinRemotePort_));
 
     // OpenSSH Server status (needed to control this machine from another one)
     labelSshStatus_ = new QLabel();
@@ -292,16 +277,130 @@ QWidget* AppSettingsDialog::BuildRemotePage()
     connect(buttonSshInstall_, &QPushButton::clicked, this, &AppSettingsDialog::OnInstallSshClicked);
     RefreshSshStatus();
 
-    auto* hint = new QLabel(TR("<b>Dùng từ máy khác qua SSH</b> (cần OpenSSH Server trên máy này):<br>"
-        "<code>redstonectl --ssh bạn@may-chu --token &lt;token&gt; list</code><br><br>"
-        "Cùng máy: <code>redstonectl --token &lt;token&gt; list</code><br><br>"
-        "Chỉ các thao tác có trong app được hỗ trợ: xem/Start/Stop/Restart server, console, người chơi, backup, "
-        "server.properties. Không thể thêm/xoá server, khôi phục backup hay đổi cài đặt app từ xa."));
+    // ---- Accounts (roles) ----
+    layout->addSpacing(8);
+    layout->addWidget(MakeSectionLabel(TR("TÀI KHOẢN TRUY CẬP & PHÂN QUYỀN")));
+    auto* accountCard = new QFrame();
+    accountCard->setObjectName(QStringLiteral("settingRow"));
+    auto* accountLayout = new QHBoxLayout(accountCard);
+    accountLayout->setContentsMargins(14, 14, 14, 14);
+    accountLayout->setSpacing(16);
+
+    auto* left = new QVBoxLayout();
+    listAccounts_ = new QListWidget();
+    listAccounts_->setMinimumWidth(170);
+    listAccounts_->setMaximumWidth(210);
+    left->addWidget(listAccounts_, 1);
+    auto* addAccount = new QPushButton(TR("Thêm tài khoản"));
+    auto* removeAccount = new QPushButton(TR("Xoá tài khoản"));
+    left->addWidget(addAccount);
+    left->addWidget(removeAccount);
+    accountLayout->addLayout(left);
+
+    auto* form = new QVBoxLayout();
+    form->setSpacing(8);
+    editAccountName_ = new QLineEdit();
+    editAccountName_->setPlaceholderText(TR("Tên tài khoản (chữ, số, _ . -)"));
+    form->addWidget(new QLabel(TR("Tên tài khoản")));
+    form->addWidget(editAccountName_);
+
+    comboAccountRole_ = new QComboBox();
+    comboAccountRole_->addItem(TR("viewer — chỉ xem"), QStringLiteral("viewer"));
+    comboAccountRole_->addItem(TR("operator — vận hành"), QStringLiteral("operator"));
+    comboAccountRole_->addItem(TR("admin — toàn quyền"), QStringLiteral("admin"));
+    form->addWidget(new QLabel(TR("Vai trò")));
+    form->addWidget(comboAccountRole_);
+    labelRoleHelp_ = new QLabel();
+    labelRoleHelp_->setObjectName(QStringLiteral("hintLabel"));
+    labelRoleHelp_->setWordWrap(true);
+    form->addWidget(labelRoleHelp_);
+
+    checkAllServers_ = new QCheckBox(TR("Được dùng trên mọi server"));
+    form->addWidget(checkAllServers_);
+    listAccountServers_ = new QListWidget();
+    listAccountServers_->setMaximumHeight(110);
+    form->addWidget(listAccountServers_);
+
+    editRemoteToken_ = new QLineEdit();
+    editRemoteToken_->setEchoMode(QLineEdit::Password);
+    editRemoteToken_->setReadOnly(true);
+    editRemoteToken_->setMinimumWidth(120);
+    auto* showButton = new QPushButton(TR("Hiện"));
+    auto* copyButton = new QPushButton(TR("Sao chép"));
+    auto* newButton = new QPushButton(TR("Tạo mới"));
+    auto* tokenRow = new QHBoxLayout();
+    tokenRow->setSpacing(8);
+    tokenRow->addWidget(editRemoteToken_, 1);
+    tokenRow->addWidget(showButton);
+    tokenRow->addWidget(copyButton);
+    tokenRow->addWidget(newButton);
+    form->addWidget(new QLabel(TR("Token truy cập")));
+    form->addLayout(tokenRow);
+    auto* tokenHint = new QLabel(TR("Token không bao giờ được gửi qua kết nối, chỉ một mã HMAC của nó. Tạo mới sẽ ngắt các phiên đang dùng token cũ."));
+    tokenHint->setObjectName(QStringLiteral("hintLabel"));
+    tokenHint->setWordWrap(true);
+    form->addWidget(tokenHint);
+    accountLayout->addLayout(form, 1);
+    layout->addWidget(accountCard);
+
+    // ---- Audit log ----
+    layout->addSpacing(8);
+    layout->addWidget(MakeSectionLabel(TR("NHẬT KÝ TRUY CẬP")));
+    viewAudit_ = new QPlainTextEdit();
+    viewAudit_->setReadOnly(true);
+    viewAudit_->setLineWrapMode(QPlainTextEdit::NoWrap);
+    viewAudit_->setMinimumHeight(120);
+    viewAudit_->setMaximumHeight(180);
+    viewAudit_->setFont(QFont(QStringLiteral("Cascadia Mono"), 9));
+    layout->addWidget(viewAudit_);
+    auto* refreshAudit = new QPushButton(TR("Làm mới nhật ký"));
+    layout->addWidget(refreshAudit, 0, Qt::AlignLeft);
+
+    auto* hint = new QLabel(TR(
+        "<b>Dùng từ máy khác qua SSH</b> (cần OpenSSH Server trên máy này):<br>"
+        "<code>redstonectl --ssh bạn@may-chu --user &lt;tên&gt; --token &lt;token&gt; info</code><br><br>"
+        "Cùng máy: <code>redstonectl --user &lt;tên&gt; --token &lt;token&gt; list</code><br><br>"
+        "Mỗi lệnh được kiểm tra quyền ở phía app và ghi vào nhật ký (data/remote_audit.log). "
+        "Không thể thêm/xoá server, khôi phục backup hay đổi cài đặt app từ xa."));
     hint->setObjectName(QStringLiteral("hintLabel"));
     hint->setWordWrap(true);
     hint->setTextFormat(Qt::RichText);
     layout->addWidget(hint);
     layout->addStretch(1);
+
+    // ---- wiring ----
+    connect(listAccounts_, &QListWidget::currentRowChanged, this, [this](int row) {
+        CommitAccountForm();
+        currentAccount_ = row;
+        LoadAccountForm();
+    });
+    connect(editAccountName_, &QLineEdit::textEdited, this, [this]() { CommitAccountForm(); if (currentAccount_ >= 0) listAccounts_->item(currentAccount_)->setText(QStringLiteral("%1 · %2").arg(accounts_[currentAccount_].name, remote::RoleName(accounts_[currentAccount_].role))); });
+    connect(comboAccountRole_, &QComboBox::currentIndexChanged, this, [this]() {
+        if (loadingForm_) return; // LoadAccountForm() sets the combo itself - re-entering it would reset the form half-loaded
+        CommitAccountForm();
+        if (currentAccount_ >= 0) listAccounts_->item(currentAccount_)->setText(QStringLiteral("%1 · %2").arg(accounts_[currentAccount_].name, remote::RoleName(accounts_[currentAccount_].role)));
+        LoadAccountForm();
+    });
+    connect(checkAllServers_, &QCheckBox::toggled, this, [this](bool all) { listAccountServers_->setEnabled(!all); CommitAccountForm(); });
+    connect(listAccountServers_, &QListWidget::itemChanged, this, [this]() { CommitAccountForm(); });
+    connect(addAccount, &QPushButton::clicked, this, [this]() {
+        CommitAccountForm();
+        remote::Account a;
+        int n = accounts_.size() + 1;
+        auto taken = [this](const QString& name) { for (const auto& x : accounts_) if (x.name.compare(name, Qt::CaseInsensitive) == 0) return true; return false; };
+        do { a.name = QStringLiteral("user%1").arg(n++); } while (taken(a.name));
+        a.secret = remote::RemoteControlServer::GenerateToken();
+        a.role = remote::Role::Viewer;
+        accounts_.push_back(a);
+        RefreshAccountList(static_cast<int>(accounts_.size()) - 1);
+    });
+    connect(removeAccount, &QPushButton::clicked, this, [this]() {
+        if (currentAccount_ < 0 || currentAccount_ >= accounts_.size()) return;
+        accounts_.removeAt(currentAccount_);
+        currentAccount_ = -1;
+        RefreshAccountList(std::min<int>(0, static_cast<int>(accounts_.size()) - 1));
+    });
+    connect(refreshAudit, &QPushButton::clicked, this, &AppSettingsDialog::RefreshAudit);
 
     // Turning remote control on while OpenSSH Server is missing: offer to install it now.
     connect(toggleRemote_, &QAbstractButton::toggled, this, [this](bool on) {
@@ -324,10 +423,97 @@ QWidget* AppSettingsDialog::BuildRemotePage()
         }
     });
     connect(newButton, &QPushButton::clicked, this, [this]() {
-        editRemoteToken_->setText(remote::RemoteControlServer::GenerateToken());
+        if (currentAccount_ < 0 || currentAccount_ >= accounts_.size()) return;
+        accounts_[currentAccount_].secret = remote::RemoteControlServer::GenerateToken();
+        LoadAccountForm();
         labelStatus_->setText(TR("Đã tạo token mới - bấm Áp dụng để dùng."));
     });
     return page;
+}
+
+void AppSettingsDialog::SetKnownServers(const QList<QPair<QString, QString>>& servers)
+{
+    knownServers_ = servers;
+    LoadAccountForm();
+}
+
+void AppSettingsDialog::RefreshAccountList(int select)
+{
+    listAccounts_->blockSignals(true);
+    listAccounts_->clear();
+    for (const auto& a : accounts_)
+    {
+        listAccounts_->addItem(QStringLiteral("%1 · %2").arg(a.name, remote::RoleName(a.role)));
+    }
+    currentAccount_ = (select >= 0 && select < accounts_.size()) ? select : -1;
+    // Select the row WITHOUT firing currentRowChanged: that handler saves the form into the
+    // "previous" account, and here the form still holds stale data - it would overwrite this one.
+    if (currentAccount_ >= 0) listAccounts_->setCurrentRow(currentAccount_);
+    listAccounts_->blockSignals(false);
+    LoadAccountForm();
+}
+
+void AppSettingsDialog::LoadAccountForm()
+{
+    loadingForm_ = true;
+    const bool valid = currentAccount_ >= 0 && currentAccount_ < accounts_.size();
+    editAccountName_->setEnabled(valid);
+    comboAccountRole_->setEnabled(valid);
+    checkAllServers_->setEnabled(valid);
+    listAccountServers_->setEnabled(valid);
+    if (!valid)
+    {
+        editAccountName_->clear();
+        editRemoteToken_->clear();
+        labelRoleHelp_->clear();
+        listAccountServers_->clear();
+        loadingForm_ = false;
+        return;
+    }
+    const remote::Account& a = accounts_[currentAccount_];
+    editAccountName_->setText(a.name);
+    comboAccountRole_->setCurrentIndex(std::max(0, comboAccountRole_->findData(remote::RoleName(a.role))));
+    editRemoteToken_->setText(a.secret);
+    switch (a.role)
+    {
+        case remote::Role::Viewer: labelRoleHelp_->setText(TR("Chỉ xem: danh sách, trạng thái, console, người chơi, backup, server.properties.")); break;
+        case remote::Role::Operator: labelRoleHelp_->setText(TR("Như viewer, thêm: Start/Stop/Restart, thao tác người chơi (op, kick, ban, whitelist...), tạo backup.")); break;
+        case remote::Role::Admin: labelRoleHelp_->setText(TR("Như operator, thêm: gửi lệnh console thô, sửa server.properties, xem nhật ký truy cập.")); break;
+    }
+    checkAllServers_->setChecked(a.serverIds.isEmpty());
+    listAccountServers_->clear();
+    for (const auto& [id, name] : knownServers_)
+    {
+        auto* item = new QListWidgetItem(name, listAccountServers_);
+        item->setData(Qt::UserRole, id);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(a.serverIds.contains(id) ? Qt::Checked : Qt::Unchecked);
+    }
+    listAccountServers_->setEnabled(!a.serverIds.isEmpty());
+    loadingForm_ = false;
+}
+
+void AppSettingsDialog::CommitAccountForm()
+{
+    if (loadingForm_ || currentAccount_ < 0 || currentAccount_ >= accounts_.size()) return;
+    remote::Account& a = accounts_[currentAccount_];
+    a.name = editAccountName_->text().trimmed();
+    a.role = remote::ParseRole(comboAccountRole_->currentData().toString()).value_or(remote::Role::Viewer);
+    a.serverIds.clear();
+    if (!checkAllServers_->isChecked())
+    {
+        for (int i = 0; i < listAccountServers_->count(); ++i)
+        {
+            if (listAccountServers_->item(i)->checkState() == Qt::Checked) a.serverIds << listAccountServers_->item(i)->data(Qt::UserRole).toString();
+        }
+    }
+}
+
+void AppSettingsDialog::RefreshAudit()
+{
+    const QStringList lines = remote::RemoteControlServer::ReadAuditTail(120);
+    viewAudit_->setPlainText(lines.isEmpty() ? TR("(chưa có hoạt động nào)") : lines.join(QStringLiteral("\n")));
+    viewAudit_->verticalScrollBar()->setValue(viewAudit_->verticalScrollBar()->maximum());
 }
 
 void AppSettingsDialog::RefreshSshStatus()
@@ -391,7 +577,9 @@ void AppSettingsDialog::LoadFromSettings()
 
     toggleRemote_->setChecked(s.remoteEnabled);
     spinRemotePort_->setValue(s.remotePort);
-    editRemoteToken_->setText(s.remoteToken);
+    accounts_ = s.remoteAccounts;
+    RefreshAccountList(accounts_.isEmpty() ? -1 : 0);
+    RefreshAudit();
 }
 
 void AppSettingsDialog::OnApplyClicked()
@@ -418,11 +606,29 @@ void AppSettingsDialog::OnApplyClicked()
 
     s.remoteEnabled = toggleRemote_->isChecked();
     s.remotePort = spinRemotePort_->value();
-    if (s.remoteEnabled && editRemoteToken_->text().isEmpty())
+    CommitAccountForm();
     {
-        editRemoteToken_->setText(remote::RemoteControlServer::GenerateToken()); // never run with an empty secret
+        QSet<QString> names;
+        for (const remote::Account& a : accounts_)
+        {
+            if (!remote::ValidAccountName(a.name) || names.contains(a.name.toLower()))
+            {
+                QMessageBox::warning(this, TR("Tài khoản truy cập"), TR("Tên tài khoản \"%1\" không hợp lệ hoặc bị trùng.").arg(a.name));
+                return;
+            }
+            names.insert(a.name.toLower());
+        }
+        if (s.remoteEnabled && accounts_.isEmpty())
+        {
+            remote::Account admin;
+            admin.name = QStringLiteral("admin");
+            admin.secret = remote::RemoteControlServer::GenerateToken(); // never run with no account
+            admin.role = remote::Role::Admin;
+            accounts_.push_back(admin);
+            RefreshAccountList(0);
+        }
+        s.remoteAccounts = accounts_;
     }
-    s.remoteToken = editRemoteToken_->text();
 
     CurrentSettings() = s;
     s.Save();

@@ -1,5 +1,7 @@
 #include "ui/AppSettings.hpp"
 
+#include "platform/SecretStore.hpp"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QSettings>
@@ -54,7 +56,24 @@ AppSettings AppSettings::Load()
 
     s.remoteEnabled = ini.value(QStringLiteral("remote/enabled"), false).toBool();
     s.remotePort = std::clamp(ini.value(QStringLiteral("remote/port"), 25585).toInt(), 1024, 65535);
-    s.remoteToken = ini.value(QStringLiteral("remote/token")).toString();
+    // The accounts JSON (it contains the tokens) is stored through the OS secret protection (DPAPI on Windows).
+    bool decrypted = true;
+    const QString storedAccounts = ini.value(QStringLiteral("remote/accounts")).toString();
+    s.remoteAccounts = remote::AccountsFromJson(platform::UnprotectSecret(storedAccounts, &decrypted));
+    s.remoteAccountsUnreadable = !decrypted;
+    if (s.remoteAccounts.isEmpty())
+    {
+        // Migration from the single-token versions: that token becomes the "admin" account.
+        const QString legacy = ini.value(QStringLiteral("remote/token")).toString();
+        if (!legacy.isEmpty())
+        {
+            remote::Account admin;
+            admin.name = QStringLiteral("admin");
+            admin.secret = legacy;
+            admin.role = remote::Role::Admin;
+            s.remoteAccounts.push_back(admin);
+        }
+    }
     return s;
 }
 
@@ -81,7 +100,8 @@ void AppSettings::Save() const
     ini.setValue(QStringLiteral("system/confirmStopRestart"), confirmStopRestart);
     ini.setValue(QStringLiteral("remote/enabled"), remoteEnabled);
     ini.setValue(QStringLiteral("remote/port"), remotePort);
-    ini.setValue(QStringLiteral("remote/token"), remoteToken);
+    ini.setValue(QStringLiteral("remote/accounts"), platform::ProtectSecret(remote::AccountsToJson(remoteAccounts)));
+    ini.remove(QStringLiteral("remote/token"));
     ini.sync();
 }
 

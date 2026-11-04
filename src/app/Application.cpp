@@ -42,6 +42,7 @@ int Application::Run(int argc, char** argv)
 
     QApplication qtApp(argc, argv);
     QApplication::setApplicationName("Minecraft Server Manager");
+    QApplication::setApplicationVersion(QStringLiteral("2.0.0"));
     QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/redstone.png"))); // every dialog inherits it
 
     // data/servers.json and logs/app.log are opened via RELATIVE paths

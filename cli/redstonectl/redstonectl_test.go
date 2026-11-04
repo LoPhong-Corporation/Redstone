@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +59,7 @@ func fakeApp(t *testing.T, token string) (addr string, stop func()) {
 			go func(c net.Conn) {
 				defer c.Close()
 				const nonce = "abcdef0123456789abcdef0123456789"
-				c.Write([]byte(`{"type":"hello","protocol":1,"nonce":"` + nonce + `"}` + "\n"))
+				c.Write([]byte(`{"type":"hello","protocol":2,"nonce":"` + nonce + `"}` + "\n"))
 				r := bufio.NewReader(c)
 				line, _ := r.ReadBytes('\n')
 				var a struct{ Proof string }
@@ -65,7 +68,7 @@ func fakeApp(t *testing.T, token string) (addr string, stop func()) {
 					c.Write([]byte(`{"type":"auth","ok":false,"error":"Sai token."}` + "\n"))
 					return
 				}
-				c.Write([]byte(`{"type":"auth","ok":true}` + "\n"))
+				c.Write([]byte(`{"type":"auth","ok":true,"user":"admin","role":"admin"}` + "\n"))
 				for {
 					line, err := r.ReadBytes('\n')
 					if err != nil {
@@ -93,7 +96,7 @@ func TestHandshakeAndCall(t *testing.T) {
 	addr, stop := fakeApp(t, "secret-token-secret-token")
 	defer stop()
 
-	c, err := Dial(addr, "secret-token-secret-token", 2*time.Second)
+	c, err := Dial(addr, "admin", "secret-token-secret-token", 2*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +123,7 @@ func errorAs(err error, target **RemoteError) bool {
 func TestWrongTokenRejected(t *testing.T) {
 	addr, stop := fakeApp(t, "right-token-right-token")
 	defer stop()
-	if _, err := Dial(addr, "wrong-token-wrong-token", 2*time.Second); err == nil || !strings.Contains(err.Error(), "xác thực") {
+	if _, err := Dial(addr, "admin", "wrong-token-wrong-token", 2*time.Second); err == nil || !strings.Contains(err.Error(), "xác thực") {
 		t.Fatalf("expected auth failure, got %v", err)
 	}
 }
@@ -165,5 +168,29 @@ func TestBannerShape(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "\x1b[") {
 		t.Fatal("colour codes leaked with colour off")
+	}
+}
+
+// Every T("...") key used in the source must have an English entry (regression guard).
+func TestAllSourceStringsHaveEnglish(t *testing.T) {
+	re := regexp.MustCompile(`\bT\("((?:[^"\\\n]|\\.)*)"\)`)
+	files, _ := filepath.Glob("*.go")
+	for _, f := range files {
+		if strings.HasPrefix(f, "lang_") || strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range re.FindAllStringSubmatch(string(data), -1) {
+			key, err := strconv.Unquote(`"` + m[1] + `"`)
+			if err != nil {
+				key = m[1]
+			}
+			if _, ok := enDict[key]; !ok {
+				t.Errorf("%s: no English translation for %q", f, key)
+			}
+		}
 	}
 }

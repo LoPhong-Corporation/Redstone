@@ -38,7 +38,7 @@ if (NOT Qt6_DIR AND NOT CMAKE_PREFIX_PATH AND DEFINED ENV{QT_DIR})
 endif()
 set(Qt6_DIR
     "C:/Qt/6.11.2/msvc2022_64/lib/cmake/Qt6"
-)
+)            
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets Network)
 
 if (WIN32)
@@ -139,6 +139,10 @@ add_executable(MinecraftServerManager WIN32
     src/ui/AddonCompat.cpp
     src/ui/OpenSshHelper.hpp
     src/ui/OpenSshHelper.cpp
+    src/platform/SecretStore.hpp
+    src/platform/SecretStore.cpp
+    src/remote/Access.hpp
+    src/remote/Access.cpp
     src/remote/RemoteControlServer.hpp
     src/remote/RemoteControlServer.cpp
     src/ui/AppSettings.hpp
@@ -161,6 +165,7 @@ target_include_directories(MinecraftServerManager PRIVATE src)
 # process/console/config backend (CreateProcessW, etc.) - unrelated to Qt,
 # which always talks to Windows in UTF-16 regardless of this macro.
 # NOMINMAX avoids <windows.h>'s min/max macros clashing with std::min/max.
+
 target_compile_definitions(MinecraftServerManager PRIVATE
     UNICODE
     _UNICODE
@@ -174,7 +179,7 @@ target_link_libraries(MinecraftServerManager PRIVATE
     Qt6::Network
 )
 if (WIN32)
-    target_link_libraries(MinecraftServerManager PRIVATE dwmapi) # dark title bar / Mica via DWM
+    target_link_libraries(MinecraftServerManager PRIVATE dwmapi crypt32) # dark title bar / Mica via DWM; DPAPI for stored tokens
 endif()
 
 msm_apply_compiler_options(MinecraftServerManager)
@@ -219,4 +224,33 @@ if (MSM_BUILD_TESTS)
 
     enable_testing()
     add_test(NAME ConfigSmokeTests COMMAND MinecraftServerManagerTests)
+
+    # Qt-based tests: role-based access control, the zip reader for untrusted .mrpack files,
+    # modpack validation and the translation dictionary.
+    add_executable(MinecraftServerManagerQtTests
+        tests/QtTests.cpp
+        resources/resources.qrc
+        src/remote/Access.cpp
+        src/archive/ZipArchive.cpp
+        src/backup/ZipWriter.cpp
+        src/net/ModpackInstaller.cpp
+        src/net/ModrinthClient.cpp
+        src/ui/I18n.cpp
+        src/core/Localize.cpp
+        src/platform/SecretStore.cpp
+    )
+    target_include_directories(MinecraftServerManagerQtTests PRIVATE src)
+    if (WIN32)
+        target_link_libraries(MinecraftServerManagerQtTests PRIVATE crypt32)
+    endif()
+    target_link_libraries(MinecraftServerManagerQtTests PRIVATE Qt6::Core Qt6::Network)
+    msm_apply_compiler_options(MinecraftServerManagerQtTests)
+    add_test(NAME QtTests COMMAND MinecraftServerManagerQtTests)
+
+    # The Go remote-control CLI has its own tests (protocol handshake, translations, banner...).
+    find_program(MSM_GO_EXECUTABLE go)
+    if (MSM_GO_EXECUTABLE)
+        add_test(NAME RedstonectlGoTests COMMAND ${MSM_GO_EXECUTABLE} test ./...
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/cli/redstonectl)
+    endif()
 endif()

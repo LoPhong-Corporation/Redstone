@@ -64,6 +64,13 @@ void TestConfigManagerRoundTrip()
     server.maxMemoryMB = 4096;
     server.port = 25566;
     server.autoRestart = true;
+    server.extraJvmArgs = L"-XX:+UseG1GC -Dfile.encoding=UTF-8";
+    server.extraServerArgs = L"--forceUpgrade";
+    server.autoBackup = true;
+    server.autoBackupIntervalMinutes = 45;
+    server.backupRetention = 7;
+    server.stopTimeoutSeconds = 90;
+    server.minecraftVersion = L"1.21.4";
 
     Check(manager.Save({server}), "ConfigManager: Save() succeeds");
 
@@ -77,6 +84,11 @@ void TestConfigManagerRoundTrip()
         Check(loaded[0].maxMemoryMB == server.maxMemoryMB, "ConfigManager: maxMemoryMB round-trips");
         Check(loaded[0].port == server.port, "ConfigManager: port round-trips");
         Check(loaded[0].autoRestart == server.autoRestart, "ConfigManager: autoRestart round-trips");
+        Check(loaded[0].extraJvmArgs == server.extraJvmArgs, "ConfigManager: extraJvmArgs round-trips");
+        Check(loaded[0].extraServerArgs == server.extraServerArgs, "ConfigManager: extraServerArgs round-trips");
+        Check(loaded[0].autoBackup && loaded[0].autoBackupIntervalMinutes == 45, "ConfigManager: automatic backup settings round-trip");
+        Check(loaded[0].backupRetention == 7 && loaded[0].stopTimeoutSeconds == 90, "ConfigManager: retention and stop timeout round-trip");
+        Check(loaded[0].minecraftVersion == server.minecraftVersion, "ConfigManager: minecraftVersion round-trips");
     }
 
     std::filesystem::remove(testPath);

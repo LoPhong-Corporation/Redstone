@@ -15,6 +15,7 @@ import (
 type Profile struct {
 	Host      string `json:"host,omitempty"`
 	Port      int    `json:"port,omitempty"`
+	User      string `json:"user,omitempty"`
 	Token     string `json:"token,omitempty"`
 	TokenFile string `json:"tokenFile,omitempty"`
 	SSH       string `json:"ssh,omitempty"` // user@host - when set, connect through an SSH tunnel
@@ -88,6 +89,7 @@ func (c *ConfigFile) names() []string {
 type Settings struct {
 	Host     string
 	Port     int
+	User     string
 	Token    string
 	SSH      string
 	SSHPort  int
