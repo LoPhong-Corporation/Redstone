@@ -16,6 +16,7 @@
 #include "ui/PlayersDialog.hpp"
 #include "ui/PropertiesDialog.hpp"
 #include "ui/ServerOptionsDialog.hpp"
+#include "ui/TerminalDialog.hpp"
 
 #include <QAction>
 #include <QApplication>
@@ -374,7 +375,11 @@ MainWindow::MainWindow(
     addZoomShortcut(QKeySequence(QKeySequence::ZoomOut), -1);
     addZoomShortcut(QKeySequence(Qt::CTRL | Qt::Key_0), 0);
 
-    remote_ = new remote::RemoteControlServer(serverManager_, events_, this);
+    auto* shortcutTerminal = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
+    shortcutTerminal->setContext(Qt::ApplicationShortcut);
+    connect(shortcutTerminal, &QShortcut::activated, this, &MainWindow::OnOpenTerminalClicked);
+
+    remote_ = new remote::RemoteControlServer(serverManager_, configManager_, events_, this);
     ApplyRemoteSettings(false);
 }
 
@@ -594,6 +599,10 @@ void MainWindow::BuildToolbar()
         {makeAction(TR("Thư viện (Modrinth)"), glyph::Library, &MainWindow::OnOpenLibraryClicked),
          makeAction(TR("Đã cài"), glyph::Puzzle, &MainWindow::OnOpenInstalledAddonsClicked)});
 
+    auto* actionTerminal = makeAction(QStringLiteral("Terminal"), glyph::Console, &MainWindow::OnOpenTerminalClicked);
+    actionTerminal->setToolTip(TR("Mở App Terminal điều khiển (Ctrl+T)"));
+    toolbar_->addAction(actionTerminal);
+
     // Right-aligned: refresh + application settings.
     auto* spacer = new QWidget(toolbar_);
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -739,6 +748,9 @@ void MainWindow::HandleAppEvent(core::AppEvent event)
         case core::EventType::ServerCrashed:
             // The corresponding console line and state change are handled
             // by the two cases above; nothing extra needed for the MVP.
+            break;
+        case core::EventType::ServerListChanged:
+            RefreshServerList();
             break;
         case core::EventType::EulaRequired:
             if (event.serverId == GetSelectedServerId())
@@ -1373,6 +1385,15 @@ std::wstring MainWindow::GetSelectedServerId() const
         return L"";
     }
     return item->data(Qt::UserRole).toString().toStdWString();
+}
+
+void MainWindow::OnOpenTerminalClicked()
+{
+    auto* dialog = new TerminalDialog(serverManager_, configManager_, events_, GetSelectedServerId(), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
 }
 
 } // namespace ui

@@ -137,6 +137,7 @@ func run(args []string) int {
 		JSON:          g.json,
 		Timeout:       g.timeout,
 		DefaultServer: os.Getenv("REDSTONE_SERVER"),
+		Yes:           g.yes,
 	}
 
 	if rest[0] == "shell" {
@@ -566,9 +567,9 @@ func printHelp(_ []string) {
 	fmt.Println(heading(T("PHÂN QUYỀN")))
 	fmt.Printf("  %s %s\n", roleBadge("viewer"), T("chỉ xem: danh sách, trạng thái, console, người chơi, backup, server.properties"))
 	fmt.Printf("  %s %s\n", roleBadge("operator"), T("+ Start/Stop/Restart, thao tác người chơi, tạo backup"))
-	fmt.Printf("  %s %s\n", roleBadge("admin"), T("+ gửi lệnh console thô, sửa server.properties, xem nhật ký truy cập"))
+	fmt.Printf("  %s %s\n", roleBadge("admin"), T("+ tạo/xoá server, gửi lệnh console thô, sửa server.properties, xem nhật ký truy cập"))
 	fmt.Println(dim("  " + T("App kiểm tra quyền ở mỗi lệnh và ghi nhật ký; tài khoản có thể bị giới hạn trong một số server.")))
 	fmt.Println()
 	fmt.Println(dim(T("<server> là tên (không phân biệt hoa/thường) hoặc id server trong app.")))
-	fmt.Println(dim(T("Chỉ những thao tác có trong app được hỗ trợ; không thể thêm/xoá server, khôi phục backup hay đổi cài đặt app từ xa.")))
+	fmt.Println(dim(T("Chỉ những thao tác có trong app được hỗ trợ; không thể khôi phục backup hay đổi cài đặt app từ xa.")))
 }

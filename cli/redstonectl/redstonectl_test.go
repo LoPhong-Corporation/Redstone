@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -80,6 +81,19 @@ func fakeApp(t *testing.T, token string) (addr string, stop func()) {
 					switch req["cmd"] {
 					case "ping":
 						resp, _ := json.Marshal(map[string]any{"id": id, "ok": true, "data": map[string]any{"pong": true}})
+						c.Write(append(resp, '\n'))
+					case "create":
+						name := req["name"].(string)
+						resp, _ := json.Marshal(map[string]any{
+							"id": id, "ok": true,
+							"data": map[string]any{"id": "srv-123", "name": name, "directory": "servers/" + name, "port": req["port"]},
+						})
+						c.Write(append(resp, '\n'))
+					case "delete":
+						resp, _ := json.Marshal(map[string]any{
+							"id": id, "ok": true,
+							"data": map[string]any{"id": "srv-123", "name": req["server"], "deleted": true},
+						})
 						c.Write(append(resp, '\n'))
 					default:
 						resp, _ := json.Marshal(map[string]any{"id": id, "ok": false, "error": "không hỗ trợ"})
@@ -192,5 +206,41 @@ func TestAllSourceStringsHaveEnglish(t *testing.T) {
 				t.Errorf("%s: no English translation for %q", f, key)
 			}
 		}
+	}
+}
+
+func TestCreateAndDeleteCommands(t *testing.T) {
+	buildCommands()
+	addr, stop := fakeApp(t, "test-token-test-token")
+	defer stop()
+
+	c, err := Dial(addr, "admin", "test-token-test-token", 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	var buf bytes.Buffer
+	env := &Env{
+		Client:  c,
+		Ctx:     context.Background(),
+		Out:     &buf,
+		Timeout: 2 * time.Second,
+		Yes:     true,
+	}
+
+	if err := RunCommand(env, []string{"create", "MySurvivalServer", "--port", "25566"}); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "MySurvivalServer") {
+		t.Fatalf("output missing server name: %s", buf.String())
+	}
+
+	buf.Reset()
+	if err := RunCommand(env, []string{"delete", "MySurvivalServer", "--yes"}); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Đã xoá server") && !strings.Contains(buf.String(), "Server deleted") {
+		t.Fatalf("output missing delete confirmation: %s", buf.String())
 	}
 }

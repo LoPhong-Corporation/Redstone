@@ -21,6 +21,7 @@ type Env struct {
 	JSON          bool
 	Timeout       time.Duration
 	DefaultServer string // lets `shell` / REDSTONE_SERVER omit the <server> argument
+	Yes           bool
 }
 
 type cmdSpec struct {
@@ -35,7 +36,10 @@ type cmdSpec struct {
 var errUsage = errors.New("usage")
 
 // flags (without dashes) that consume the following word as their value
-var valueFlags = map[string]bool{"n": true, "wait-timeout": true}
+var valueFlags = map[string]bool{
+	"n": true, "wait-timeout": true, "dir": true, "jar": true,
+	"java": true, "port": true, "type": true, "min-ram": true, "max-ram": true,
+}
 
 func usageErr(spec *cmdSpec) error {
 	return fmt.Errorf("%w: redstonectl %s %s", errUsage, spec.Name, spec.Args)
@@ -360,7 +364,98 @@ func buildCommands() {
 			env.show(raw, func() { fmt.Fprintf(env.Out, T("Đã đặt %s. Restart server để áp dụng.\n"), args[0]) })
 			return nil
 		}},
+		{Name: "create", Args: T("<tên> [--dir <path>] [--jar <path>] [--java <path>] [--port 25565] [--type Vanilla] [--min-ram 1024] [--max-ram 2048]"), Help: T("Tạo server mới (chỉ admin)"), Run: runCreate},
+		{Name: "delete", Args: T("<server> [--yes] [--delete-files]"), Help: T("Xoá server (chỉ admin)"), NeedsServer: true, Run: runDelete},
 	}
+}
+
+func runCreate(env *Env, _ string, args []string) error {
+	fs := newFlagSet("create")
+	dir := fs.String("dir", "", "")
+	jar := fs.String("jar", "", "")
+	java := fs.String("java", "", "")
+	port := fs.Int("port", 25565, "")
+	srvType := fs.String("type", "Vanilla", "")
+	minRam := fs.Int("min-ram", 1024, "")
+	maxRam := fs.Int("max-ram", 2048, "")
+	pos, err := parseInterspersed(fs, args)
+	if err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if len(pos) < 1 {
+		return fmt.Errorf(T("%w: thiếu tên server"), errUsage)
+	}
+	name := pos[0]
+	params := map[string]any{
+		"name":   name,
+		"port":   *port,
+		"type":   *srvType,
+		"minRam": *minRam,
+		"maxRam": *maxRam,
+	}
+	if *dir != "" {
+		params["directory"] = *dir
+	}
+	if *jar != "" {
+		params["jar"] = *jar
+	}
+	if *java != "" {
+		params["java"] = *java
+	}
+	raw, err := env.call("create", params)
+	if err != nil {
+		return err
+	}
+	env.show(raw, func() {
+		var r struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			Directory string `json:"directory"`
+			Port      int    `json:"port"`
+		}
+		_ = json.Unmarshal(raw, &r)
+		fmt.Fprintf(env.Out, "%s: %s (%s)\n", green(T("Đã tạo server")), bold(r.Name), dim(r.ID))
+		fmt.Fprintf(env.Out, "  %s: %s\n", dim(T("Thư mục")), r.Directory)
+		fmt.Fprintf(env.Out, "  %s:     %d\n", dim(T("Port")), r.Port)
+	})
+	return nil
+}
+
+func runDelete(env *Env, server string, args []string) error {
+	fs := newFlagSet("delete")
+	yes := fs.Bool("yes", false, "")
+	fs.BoolVar(yes, "y", false, "")
+	deleteFiles := fs.Bool("delete-files", false, "")
+	if _, err := parseInterspersed(fs, args); err != nil {
+		return fmt.Errorf("%w: %v", errUsage, err)
+	}
+	if !*yes && !env.Yes {
+		fmt.Fprintf(env.Out, T("Bạn có chắc chắn muốn xoá server %q? [y/N]: "), server)
+		var ans string
+		fmt.Scanln(&ans)
+		ans = strings.TrimSpace(strings.ToLower(ans))
+		if ans != "y" && ans != "yes" && ans != "c" && ans != "có" {
+			fmt.Fprintln(env.Out, T("Đã huỷ."))
+			return nil
+		}
+	}
+	params := map[string]any{
+		"server":      server,
+		"deleteFiles": *deleteFiles,
+	}
+	raw, err := env.call("delete", params)
+	if err != nil {
+		return err
+	}
+	env.show(raw, func() {
+		var r struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(raw, &r)
+		fmt.Fprintf(env.Out, "%s: %s (%s)\n", green(T("Đã xoá server")), bold(r.Name), dim(r.ID))
+	})
+	return nil
 }
 
 func registerAccessCommands() {
@@ -377,7 +472,7 @@ var commandRoles = map[string]string{
 	"start": "operator", "stop": "operator", "restart": "operator", "backup": "operator",
 	"op": "operator", "deop": "operator", "kick": "operator", "ban": "operator", "pardon": "operator", "banip": "operator",
 	"pardonip": "operator", "whitelist": "operator", "gamemode": "operator", "msg": "operator", "say": "operator",
-	"send": "admin", "prop-set": "admin", "audit": "admin",
+	"send": "admin", "prop-set": "admin", "audit": "admin", "create": "admin", "delete": "admin",
 }
 
 func findCommand(name string) *cmdSpec {

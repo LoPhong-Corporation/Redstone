@@ -15,6 +15,7 @@ enum class EventType
     ServerCrashed,
     StatsUpdated, // Phase 2: periodic CPU%/RAM sample from monitor::ProcessMonitor
     EulaRequired, // Phase 3: server exited because eula.txt says eula=false
+    ServerListChanged, // Profile added or removed (e.g. from CLI or Terminal)
 };
 
 // A single application event. Kept as one flat struct (rather than a

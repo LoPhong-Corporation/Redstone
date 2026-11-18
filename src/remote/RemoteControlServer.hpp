@@ -26,6 +26,11 @@
 #include "remote/Access.hpp"
 #include "server/ServerManager.hpp"
 
+namespace config
+{
+class ConfigManager;
+}
+
 #include <QHash>
 #include <QJsonObject>
 #include <QElapsedTimer>
@@ -49,6 +54,11 @@ class RemoteControlServer : public QObject
 public:
     static constexpr int kProtocolVersion = 2; // v2: per-account authentication (see Access.hpp)
 
+    RemoteControlServer(
+        std::shared_ptr<server::ServerManager> serverManager,
+        std::shared_ptr<config::ConfigManager> configManager,
+        std::shared_ptr<core::EventDispatcher> events,
+        QObject* parent = nullptr);
     RemoteControlServer(
         std::shared_ptr<server::ServerManager> serverManager,
         std::shared_ptr<core::EventDispatcher> events,
@@ -114,9 +124,12 @@ private:
     Result CmdWhoAmI(const Account& account) const;
     Result CmdApp(const Account& account) const;
     Result CmdAudit(const QJsonObject& request) const;
+    Result CmdCreate(const QJsonObject& request);
+    Result CmdDelete(const Account& account, const QJsonObject& request);
     void Audit(const Client& client, const QString& cmd, const QJsonObject& request, const QString& outcome);
 
     std::shared_ptr<server::ServerManager> serverManager_;
+    std::shared_ptr<config::ConfigManager> configManager_;
     std::shared_ptr<core::EventDispatcher> events_;
     QTcpServer* listener_ = nullptr;
     QList<Account> accounts_;

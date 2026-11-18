@@ -51,12 +51,12 @@
 ; regardless of where the app is installed); the app already reports
 ; that clearly if it fails, no installer-level workaround needed for it.
 
-#define MyAppName "Minecraft Server Manager"
-#define MyAppVersion "1.0.0"
+#define MyAppName "Redstone - Minecraft Server Manager"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "LoPhong Corporation"
 #define MyAppExeName "MinecraftServerManager.exe"
 ; Adjust this if your Release build landed somewhere else.
-#define MyBuildDir "..\build\Release"
+#define MyBuildDir "..\out\build\x64-Release"
 
 [Setup]
 ; Generate your OWN GUID for a real release (Tools > Generate GUID in the

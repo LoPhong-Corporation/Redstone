@@ -2,7 +2,9 @@
 #include "ui/I18n.hpp"
 
 #include "backup/BackupManager.hpp"
+#include "config/ConfigManager.hpp"
 #include "config/ServerProperties.hpp"
+#include "javamanager/JavaManager.hpp"
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -115,9 +117,13 @@ bool ConstantTimeEquals(const QByteArray& a, const QByteArray& b)
 } // namespace
 
 RemoteControlServer::RemoteControlServer(
-    std::shared_ptr<server::ServerManager> serverManager, std::shared_ptr<core::EventDispatcher> events, QObject* parent)
+    std::shared_ptr<server::ServerManager> serverManager,
+    std::shared_ptr<config::ConfigManager> configManager,
+    std::shared_ptr<core::EventDispatcher> events,
+    QObject* parent)
     : QObject(parent)
     , serverManager_(std::move(serverManager))
+    , configManager_(std::move(configManager))
     , events_(std::move(events))
 {
     uptime_.start();
@@ -136,6 +142,12 @@ RemoteControlServer::RemoteControlServer(
             }, Qt::QueuedConnection);
         }
     });
+}
+
+RemoteControlServer::RemoteControlServer(
+    std::shared_ptr<server::ServerManager> serverManager, std::shared_ptr<core::EventDispatcher> events, QObject* parent)
+    : RemoteControlServer(std::move(serverManager), nullptr, std::move(events), parent)
+{
 }
 
 RemoteControlServer::~RemoteControlServer()
@@ -581,6 +593,9 @@ RemoteControlServer::Result RemoteControlServer::Dispatch(
         return r;
     }
 
+    if (cmd == QLatin1String("create")) return CmdCreate(request);
+    if (cmd == QLatin1String("delete")) return CmdDelete(account, request);
+
     // Everything below targets one server.
     QString error;
     const auto srv = ResolveServer(request.value(QStringLiteral("server")).toString(), &error);
@@ -960,6 +975,160 @@ RemoteControlServer::Result RemoteControlServer::CmdAudit(const QJsonObject& req
     QJsonArray out;
     for (const QString& line : ReadAuditTail(n)) out.append(line);
     r.data.insert(QStringLiteral("lines"), out);
+    return r;
+}
+
+RemoteControlServer::Result RemoteControlServer::CmdCreate(const QJsonObject& request)
+{
+    Result r;
+    if (!configManager_)
+    {
+        r.ok = false;
+        r.error = TR("Không có ConfigManager để lưu cấu hình server.");
+        return r;
+    }
+    const QString name = request.value(QStringLiteral("name")).toString().trimmed();
+    if (name.isEmpty())
+    {
+        r.ok = false;
+        r.error = TR("Thiếu tên server (\"name\").");
+        return r;
+    }
+
+    QString dirStr = request.value(QStringLiteral("directory")).toString().trimmed();
+    if (dirStr.isEmpty())
+    {
+        dirStr = QStringLiteral("servers/") + name;
+    }
+    std::filesystem::path dir(dirStr.toStdWString());
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+
+    QString jarStr = request.value(QStringLiteral("jar")).toString().trimmed();
+    if (jarStr.isEmpty())
+    {
+        jarStr = QStringLiteral("server.jar");
+    }
+    std::filesystem::path jarPath(jarStr.toStdWString());
+    if (jarPath.is_relative())
+    {
+        jarPath = dir / jarPath;
+    }
+
+    QString javaStr = request.value(QStringLiteral("java")).toString().trimmed();
+    if (javaStr.isEmpty())
+    {
+        const auto installs = javamanager::DetectInstallations();
+        if (!installs.empty())
+        {
+            javaStr = QString::fromStdWString(installs.front().path.wstring());
+        }
+        else
+        {
+            javaStr = QStringLiteral("java.exe");
+        }
+    }
+
+    const int portVal = request.value(QStringLiteral("port")).toInt(25565);
+    if (portVal <= 0 || portVal > 65535)
+    {
+        r.ok = false;
+        r.error = TR("Port không hợp lệ (1-65535).");
+        return r;
+    }
+
+    const int minRam = request.value(QStringLiteral("minRam")).toInt(1024);
+    const int maxRam = request.value(QStringLiteral("maxRam")).toInt(2048);
+    if (minRam > maxRam)
+    {
+        r.ok = false;
+        r.error = TR("RAM tối thiểu không được lớn hơn RAM tối đa.");
+        return r;
+    }
+
+    core::ServerConfig cfg;
+    cfg.name = name.toStdWString();
+    cfg.directory = dir;
+    cfg.serverJar = jarPath;
+    cfg.javaExecutable = javaStr.toStdWString();
+    cfg.serverType = request.value(QStringLiteral("type")).toString(QStringLiteral("Vanilla")).toStdWString();
+    cfg.minecraftVersion = request.value(QStringLiteral("version")).toString().toStdWString();
+    cfg.port = static_cast<std::uint16_t>(portVal);
+    cfg.minMemoryMB = static_cast<std::uint64_t>(minRam);
+    cfg.maxMemoryMB = static_cast<std::uint64_t>(maxRam);
+
+    const std::wstring id = serverManager_->AddServer(cfg, *configManager_);
+
+    core::AppEvent ev;
+    ev.type = core::EventType::ServerListChanged;
+    events_->Publish(ev);
+
+    r.data.insert(QStringLiteral("created"), true);
+    r.data.insert(QStringLiteral("id"), QString::fromStdWString(id));
+    r.data.insert(QStringLiteral("name"), name);
+    r.data.insert(QStringLiteral("directory"), QString::fromStdWString(dir.wstring()));
+    r.data.insert(QStringLiteral("port"), portVal);
+    return r;
+}
+
+RemoteControlServer::Result RemoteControlServer::CmdDelete(const Account& account, const QJsonObject& request)
+{
+    Result r;
+    if (!configManager_)
+    {
+        r.ok = false;
+        r.error = TR("Không có ConfigManager.");
+        return r;
+    }
+    const QString key = request.value(QStringLiteral("server")).toString().trimmed();
+    if (key.isEmpty())
+    {
+        r.ok = false;
+        r.error = TR("Thiếu tham số server cần xoá.");
+        return r;
+    }
+    QString error;
+    const auto srv = ResolveServer(key, &error);
+    if (!srv)
+    {
+        r.ok = false;
+        r.error = error;
+        return r;
+    }
+    const std::wstring id = srv->GetConfig().id;
+    const std::wstring name = srv->GetConfig().name;
+    const std::filesystem::path dir = srv->GetConfig().directory;
+
+    if (!CanAccessServer(account, QString::fromStdWString(id)))
+    {
+        r.ok = false;
+        r.code = QStringLiteral("forbidden");
+        r.error = TR("Tài khoản \"%1\" không được phép truy cập server \"%2\".").arg(account.name, QString::fromStdWString(name));
+        return r;
+    }
+
+    const bool deleteFiles = request.value(QStringLiteral("deleteFiles")).toBool(false);
+
+    if (!serverManager_->RemoveServer(id, *configManager_))
+    {
+        r.ok = false;
+        r.error = TR("Không tìm thấy server để xoá.");
+        return r;
+    }
+
+    if (deleteFiles)
+    {
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+
+    core::AppEvent ev;
+    ev.type = core::EventType::ServerListChanged;
+    events_->Publish(ev);
+
+    r.data.insert(QStringLiteral("deleted"), true);
+    r.data.insert(QStringLiteral("id"), QString::fromStdWString(id));
+    r.data.insert(QStringLiteral("name"), QString::fromStdWString(name));
     return r;
 }
 

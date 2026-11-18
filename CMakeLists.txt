@@ -153,6 +153,8 @@ add_executable(MinecraftServerManager WIN32
     src/ui/FluentWidgets.cpp
     src/ui/ServerOptionsDialog.hpp
     src/ui/ServerOptionsDialog.cpp
+    src/ui/TerminalDialog.hpp
+    src/ui/TerminalDialog.cpp
     src/ui/AppSettingsDialog.hpp
     src/ui/AppSettingsDialog.cpp
     src/ui/FileEditorDialog.hpp

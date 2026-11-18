@@ -10,7 +10,7 @@
 //   operator  + start / stop / restart, player actions (op, kick, ban, whitelist,
 //             gamemode, msg, say), create a backup
 //   admin     + raw console commands (`send`), editing server.properties,
-//             reading the audit log
+//             reading the audit log, creating/deleting servers (`create`, `delete`)
 //
 // Server scope: an empty `serverIds` means "all servers"; otherwise the account
 // cannot see or act on any other server (they are hidden from `list` too).

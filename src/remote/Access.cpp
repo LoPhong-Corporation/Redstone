@@ -27,6 +27,7 @@ constexpr Rule kRules[] = {
     {"player", Role::Operator},    {"backup", Role::Operator},
 
     {"send", Role::Admin},         {"prop-set", Role::Admin},   {"audit", Role::Admin},
+    {"create", Role::Admin},       {"delete", Role::Admin},
 };
 
 } // namespace

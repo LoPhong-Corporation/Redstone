@@ -91,6 +91,7 @@ private slots:
     void RequestRestart();
     void ApplyRemoteSettings(bool interactive);          // theme/console settings changed: refresh the chrome
     void OnEditConfigFileClicked();       // Fork-inspired generic file editor
+    void OnOpenTerminalClicked();         // Dedicated app terminal dialog
 
 private:
     void BuildToolbar();
